@@ -9,7 +9,7 @@ process.env.DATA_FILE = path.join(os.tmpdir(), `vfd-test-${process.pid}.json`);
 process.env.ADMIN_PASSWORD = 'test-pass';
 delete process.env.DB_NAME;
 
-const { app } = require('../server');
+const { app } = require('../app');
 
 let server, base;
 test.before(async () => {
