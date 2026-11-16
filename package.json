@@ -1,0 +1,18 @@
+{
+  "name": "venue-front-door",
+  "version": "1.0.0",
+  "description": "A venue website that stays live: change tonight, the menu or the hours once on a phone and every touchpoint updates.",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/schedule.test.js test/server.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mysql2": "^3.11.5"
+  }
+}
