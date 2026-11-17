@@ -111,7 +111,7 @@
   function viewToday() {
     var j = S.data, sc = j.schedule, st = j.status, v = V();
     var serving = j.menus.find(function (m) { return m.active; });
-    var live = (j.state.stories || []).filter(function (s) { return Date.parse(s.at) > Date.now() - 86400000; });
+    var live = (j.state.storyThemes || []);
     var html = '<p class="muted">' + esc(shortDate(sc.today)) + ' · ' + esc(S.data.catalog.presets[v.type].label) + '</p><h2>Today</h2>';
     html += '<div class="card"><span class="pill ' + (st.open ? 'ok' : 'bad') + '">' + esc(st.label) + '</span>' +
       (serving ? ' <span class="pill plain">Serving ' + esc(serving.name) + '</span>' : '') +
@@ -473,24 +473,43 @@
     });
   }
 
-  function storySheet(circle) {
+  function storySheet(circle, theme) {
     var upcoming = allUpcoming().slice(0, 8);
-    var live = (S.data.state.stories || []).filter(function (s) { return Date.parse(s.at) > Date.now() - 86400000; }).reverse();
-    openSheet(head('Post a story') + '<p class="muted">Shows on your website for 24 hours, then stays with the event it belongs to. Share it to Instagram from here too.</p>' +
-      '<form id="stForm">' + photoPicker(null) +
+    var themes = S.data.state.storyThemes || [];
+    var pick = theme || (circle ? (themes.find(function (t) { return /circle/i.test(t); }) || themes[0]) : themes[0]) || '';
+    var stories = S.data.state.stories || [];
+    openSheet(head('Post a story') + '<p class="muted">Stories sit on your website in themes, like Instagram highlights. Anything linked to an event also stays on that event’s page.</p>' +
+      '<form id="stForm"><label class="f">Theme</label><div class="chips" id="themeChips">' + themes.map(function (t) { return '<button type="button" data-theme="' + esc(t) + '" class="' + (t === pick ? 'on' : '') + '">' + esc(t) + '</button>'; }).join('') + '<button type="button" data-theme-new>＋ New theme</button></div>' +
+      '<input type="hidden" name="theme" value="' + esc(pick) + '"><label class="f hidden" id="newTheme">New theme name<input name="newTheme" maxlength="24" placeholder="Brunch club"></label>' +
+      photoPicker(null) +
       '<label class="f" style="margin-top:14px">A line (optional with a photo)<input name="caption" maxlength="160" placeholder="Soundcheck done. Doors at 22:00."></label>' +
-      '<label class="f">Belongs to<select name="eventKey"><option value="">Nothing in particular</option>' + upcoming.map(function (o) { return '<option value="' + esc(o.key) + '"' + (o.date === S.data.schedule.today ? ' selected' : '') + '>' + esc(whenWord(o)) + ' · ' + esc(o.name) + '</option>'; }).join('') + '</select></label>' +
+      (V().modules.events ? '<label class="f">Belongs to an event?<select name="eventKey"><option value="">No</option>' + upcoming.map(function (o) { return '<option value="' + esc(o.key) + '">' + esc(whenWord(o)) + ' · ' + esc(o.name) + '</option>'; }).join('') + '</select></label>' : '') +
       (V().modules.circle ? '<label class="consentrow"><input type="checkbox" name="circleOnly" ' + (circle ? 'checked' : '') + '> Circle members only</label>' : '') +
       '<div id="stErr"></div><button class="btn dark block" type="submit">Post story</button></form>' +
-      (live.length ? '<h3>Live now</h3>' + live.map(function (s) { return '<div class="row"><div class="grow">' + esc(s.caption || 'Photo') + '<span class="muted">' + (s.circleOnly ? 'Circle only · ' : '') + Math.max(0, Math.round((Date.now() - Date.parse(s.at)) / 3600000)) + 'h ago</span></div><button class="btn small" data-share-story="' + esc(s.id) + '">Share</button><button class="btn small" data-del-story="' + esc(s.id) + '">Remove</button></div>'; }).join('') : ''));
+      '<h3>Your themes</h3>' + themes.map(function (t, i) {
+        var list = stories.filter(function (x) { return x.theme === t; });
+        return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>' + esc(t) + ' <span class="muted">· ' + list.length + '</span></b><span class="mover"><button aria-label="Move up" data-tmove="' + esc(t) + '|up" ' + (i === 0 ? 'disabled' : '') + '>↑</button><button aria-label="Move down" data-tmove="' + esc(t) + '|down" ' + (i === themes.length - 1 ? 'disabled' : '') + '>↓</button><button aria-label="Rename" data-trename="' + esc(t) + '">✎</button><button aria-label="Remove theme" data-tdel="' + esc(t) + '">✕</button></span></div>' +
+          list.slice().reverse().slice(0, 4).map(function (x) { return '<div class="row"><div class="grow">' + esc(x.caption || 'Photo') + (x.circleOnly ? '<span class="muted">Circle only</span>' : '') + '</div><button class="btn small" data-share-story="' + esc(x.id) + '">Share</button><button class="btn small" data-del-story="' + esc(x.id) + '">✕</button></div>'; }).join('') + '</div>';
+      }).join(''));
     var form = $('#stForm');
     bindPhoto(form);
+    $$('[data-theme]', sheet).forEach(function (b) { b.addEventListener('click', function () {
+      form.theme.value = b.getAttribute('data-theme'); $('#newTheme').classList.add('hidden');
+      $$('#themeChips button', sheet).forEach(function (x) { x.classList.toggle('on', x === b); });
+    }); });
+    $('[data-theme-new]', sheet).addEventListener('click', function (e) {
+      form.theme.value = ''; $('#newTheme').classList.remove('hidden'); form.newTheme.focus();
+      $$('#themeChips button', sheet).forEach(function (x) { x.classList.toggle('on', x === e.currentTarget); });
+    });
     form.addEventListener('submit', function (e) {
       e.preventDefault();
-      act('story.add', { photo: form.photo.value || null, caption: form.caption.value, eventKey: form.eventKey.value || null, circleOnly: form.circleOnly ? form.circleOnly.checked : false })
-        .then(function (j) { var s = S.data.state.stories[S.data.state.stories.length - 1]; shareStorySheet(s.id, j.change); })
+      act('story.add', { theme: form.theme.value || form.newTheme.value, photo: form.photo.value || null, caption: form.caption.value, eventKey: form.eventKey ? form.eventKey.value || null : null, circleOnly: form.circleOnly ? form.circleOnly.checked : false })
+        .then(function (j) { var st = S.data.state.stories[S.data.state.stories.length - 1]; shareStorySheet(st.id, j.change); })
         .catch(function (err) { errBox('#stErr', err); });
     });
+    $$('[data-tmove]', sheet).forEach(function (b) { b.addEventListener('click', function () { var x = b.getAttribute('data-tmove').split('|'); act('theme.move', { theme: x[0], dir: x[1] }).then(function () { storySheet(circle, pick); }).catch(fail); }); });
+    $$('[data-trename]', sheet).forEach(function (b) { b.addEventListener('click', function () { var from = b.getAttribute('data-trename'); var to = window.prompt('Rename theme', from); if (!to || to === from) return; act('theme.rename', { from: from, to: to }).then(function () { storySheet(circle); }).catch(fail); }); });
+    $$('[data-tdel]', sheet).forEach(function (b) { b.addEventListener('click', function () { var t = b.getAttribute('data-tdel'); if (!window.confirm('Remove the ' + t + ' theme and its stories?')) return; act('theme.delete', { theme: t }).then(function () { storySheet(circle); }).catch(fail); }); });
   }
 
   function menuSheet(m) {
@@ -729,7 +748,7 @@
     if (t.hasAttribute('data-close')) return closeSheet();
     if (t.hasAttribute('data-share')) return shareSheet(t.getAttribute('data-share'));
     if (t.hasAttribute('data-share-story')) return shareStorySheet(t.getAttribute('data-share-story'));
-    if (t.hasAttribute('data-del-story')) return act('story.delete', { id: t.getAttribute('data-del-story') }).then(function () { toast('Story removed'); storySheet(); }).catch(fail);
+    if (t.hasAttribute('data-del-story')) return act('story.delete', { id: t.getAttribute('data-del-story') }).then(function () { toast('Story removed'); storySheet(false); }).catch(fail);
     if (t.hasAttribute('data-edit-event')) return eventSheet(S.data.state.events.find(function (n) { return n.id === t.getAttribute('data-edit-event'); }));
     if (t.hasAttribute('data-results')) return resultsSheet(t.getAttribute('data-results'));
     if (t.hasAttribute('data-go')) {

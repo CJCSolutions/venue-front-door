@@ -10,6 +10,8 @@ const { applyAction, ActionError, LOOKS } = require('./lib/actions');
 const { buildStats } = require('./lib/stats');
 const { localNow, addDays } = require('./lib/time');
 const render = require('./lib/render');
+const pitch = require('./lib/pitch');
+const LEADS_PASSWORD = process.env.LEADS_PASSWORD || '';
 
 const PORT = process.env.PORT || 3000;
 const DEMO = process.env.DEMO_MODE === '1';
@@ -196,6 +198,58 @@ app.post('/book', form, page(async (req, res) => {
   if (!values.name || !values.contact) return res.status(400).send(render.bookPage(ctx, { error: 'Please add your name and a phone number or email.', values }));
   await store.addEnquiry({ name: values.name, contact: values.contact, date: values.date || null, guests: values.guests || null, type: values.type, message: values.message, source: values.src || 'direct' });
   res.send(render.bookPage(ctx, { sent: true }));
+}));
+
+// ---------- Pulse sales page and leads ----------
+
+app.get('/pulse', page(async (req, res) => {
+  countVisit(req);
+  res.send(pitch.pitchPage({ lang: req.query.lang === 'es' ? 'es' : 'en' }));
+}));
+
+app.post('/pulse', form, page(async (req, res) => {
+  const b = req.body || {};
+  const lang = b.lang === 'es' ? 'es' : 'en';
+  const t = pitch.T[lang];
+  const needs = [].concat(b.needs || []).filter((x) => Object.keys(t.needs).includes(x));
+  const values = {
+    name: String(b.name || '').trim().slice(0, 80), venue: String(b.venue || '').trim().slice(0, 80),
+    type: Object.keys(t.types).includes(b.type) ? b.type : 'other', contact: String(b.contact || '').trim().slice(0, 120),
+    needs, message: String(b.message || '').trim().slice(0, 1000)
+  };
+  if (b.website) return res.send(pitch.pitchPage({ lang, sent: true }));
+  if (limited('lead:' + req.ip, 5, 10 * 60 * 1000)) return res.status(429).send(pitch.pitchPage({ lang, error: 'Too many tries. Please wait a few minutes.', values }));
+  if (!values.name || !values.contact) return res.status(400).send(pitch.pitchPage({ lang, error: t.errName, values }));
+  if (b.consent !== '1') return res.status(400).send(pitch.pitchPage({ lang, error: t.errConsent, values }));
+  await store.addLead({ ...values, needs: needs.join(', '), lang });
+  console.log(JSON.stringify({ level: 'INFO', message: `New Pulse lead: ${values.name} (${values.venue || values.type})`, timestamp: new Date().toISOString() }));
+  res.send(pitch.pitchPage({ lang, sent: true }));
+}));
+
+function leadsAllowed(req) { return LEADS_PASSWORD && readCookie(req, 'vfd_leads') === sign('leads:' + LEADS_PASSWORD); }
+
+app.get('/pulse/leads', page(async (req, res) => {
+  res.set('X-Robots-Tag', 'noindex');
+  if (!LEADS_PASSWORD) return res.status(503).send(pitch.leadsPage({ error: 'Set LEADS_PASSWORD on the server to open this page.' }));
+  res.send(pitch.leadsPage({ leads: leadsAllowed(req) ? await store.listLeads() : null }));
+}));
+
+app.post('/pulse/leads', form, page(async (req, res) => {
+  if (!LEADS_PASSWORD) return res.status(503).send(pitch.leadsPage({ error: 'Set LEADS_PASSWORD on the server to open this page.' }));
+  if (limited('leadslogin:' + req.ip, 8, 10 * 60 * 1000)) return res.status(429).send(pitch.leadsPage({ error: 'Too many tries. Wait a few minutes.' }));
+  const given = Buffer.from(String((req.body || {}).password || ''));
+  const want = Buffer.from(LEADS_PASSWORD);
+  if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return res.status(401).send(pitch.leadsPage({ error: 'Wrong password' }));
+  res.set('Set-Cookie', `vfd_leads=${sign('leads:' + LEADS_PASSWORD)}; HttpOnly; Path=/pulse; SameSite=Lax; Max-Age=${30 * 86400}${SECURE}`);
+  res.redirect(303, '/pulse/leads');
+}));
+
+app.get('/pulse/leads.csv', page(async (req, res) => {
+  if (!leadsAllowed(req)) return res.status(401).send('Log in at /pulse/leads first');
+  const rows = await store.listLeads();
+  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  res.set('Content-Type', 'text/csv; charset=utf-8').set('Content-Disposition', 'attachment; filename="pulse-leads.csv"');
+  res.send(['date,name,venue,type,contact,needs,message,lang', ...rows.map((l) => [String(l.created_at).slice(0, 16), l.name, l.venue, l.type, l.contact, l.needs, l.message, l.lang].map(cell).join(','))].join('\n'));
 }));
 
 // ---------- the Circle ----------

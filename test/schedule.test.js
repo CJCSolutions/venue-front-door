@@ -76,9 +76,13 @@ test('menu builder changes report what they reached', () => {
 
 test('stories need a photo or text, and bad input is refused plainly', () => {
   const state = seedState(FRI_EVENING);
-  assert.throws(() => applyAction(state, { type: 'story.add', payload: {} }), /photo or a line/);
-  const ok = applyAction(state, { type: 'story.add', payload: { caption: 'Doors open', circleOnly: true } }, FRI_EVENING);
+  assert.throws(() => applyAction(state, { type: 'story.add', payload: { theme: 'Tonight' } }), /photo or a line/);
+  assert.throws(() => applyAction(state, { type: 'story.add', payload: { caption: 'x' } }), /Theme is needed/);
+  const ok = applyAction(state, { type: 'story.add', payload: { theme: 'Brunch club', caption: 'Doors open', circleOnly: true } }, FRI_EVENING);
   assert.strictEqual(ok.state.stories.at(-1).circleOnly, true);
+  assert.ok(ok.state.storyThemes.includes('Brunch club'));
+  const renamed = applyAction(ok.state, { type: 'theme.rename', payload: { from: 'Brunch club', to: 'Brunch' } }).state;
+  assert.strictEqual(renamed.stories.at(-1).theme, 'Brunch');
   assert.throws(() => applyAction(state, { type: 'event.save', payload: { name: '', start: '2026-11-20' } }), /Name is needed/);
   assert.throws(() => applyAction(state, { type: 'event.save', payload: { name: 'X', start: '2026-11-20', bookable: true, capacity: -3 } }), /Capacity/);
 });

@@ -57,44 +57,45 @@
     if (location.hash) showMenu(location.hash.slice(1));
   }
 
-  // ---- stories ----
+  // ---- stories: one bubble per theme; plays that theme, then the next ----
   var viewer = document.querySelector('[data-viewer]');
-  var stories = [], idx = 0, timer = null;
+  var groups = [], gi = 0, si = 0, timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function ago(t) { var m = Math.max(1, Math.round((Date.now() - Date.parse(t)) / 60000)); return m < 60 ? m + 'm ago' : Math.round(m / 60) + 'h ago'; }
-  function openStory(i) {
-    idx = i;
-    var s = stories[idx];
-    if (!s) return closeStory();
+  function show(g, i) {
+    if (g >= groups.length) return closeStory();
+    if (i >= groups[g].stories.length) return show(g + 1, 0);
+    if (i < 0) { if (g === 0) i = 0; else { g -= 1; i = groups[g].stories.length - 1; } }
+    gi = g; si = i;
+    var grp = groups[gi], s = grp.stories[si];
     viewer.hidden = false;
-    viewer.innerHTML = '<div class="story ' + (s.photo ? '' : 'story-text-only') + '" role="dialog" aria-modal="true" aria-label="Story">' +
-      '<div class="story-bars">' + stories.map(function (_, k) { return '<span class="' + (k <= idx ? 'done' : '') + '"></span>'; }).join('') + '</div>' +
-      '<div class="story-top"><span>' + esc(ago(s.at)) + (s.circle ? ' · Circle only' : '') + '</span><button class="story-close" data-story-close aria-label="Close">✕</button></div>' +
+    viewer.innerHTML = '<div class="story ' + (s.photo ? '' : 'story-text-only') + '" role="dialog" aria-modal="true" aria-label="' + esc(grp.theme) + ' stories">' +
+      '<div class="story-bars">' + grp.stories.map(function (_, k) { return '<span class="' + (k <= si ? 'done' : '') + '"></span>'; }).join('') + '</div>' +
+      '<div class="story-top"><span>' + esc(grp.theme) + (s.circle ? ' · Circle only' : '') + '</span><button class="story-close" data-story-close aria-label="Close">✕</button></div>' +
       (s.photo ? '<img src="' + esc(s.photo) + '" alt="">' : '') +
-      '<button class="story-nav prev" data-story-prev aria-label="Previous story"></button><button class="story-nav next" data-story-next aria-label="Next story"></button>' +
+      '<button class="story-nav prev" data-story-prev aria-label="Previous"></button><button class="story-nav next" data-story-next aria-label="Next"></button>' +
       (s.caption ? '<div class="story-cap">' + esc(s.caption) + '</div>' : '') +
       (s.link ? '<a class="story-link" href="' + esc(s.link) + '">' + esc(s.linkText || 'See more') + ' →</a>' : '') + '</div>';
     viewer.querySelector('[data-story-close]').focus();
     clearTimeout(timer);
-    timer = setTimeout(function () { openStory(idx + 1); }, 6000);
+    timer = setTimeout(function () { show(gi, si + 1); }, 6000);
   }
   function closeStory() { clearTimeout(timer); viewer.hidden = true; viewer.innerHTML = ''; }
   function bindStories() {
     var data = document.getElementById('story-data');
-    stories = data ? JSON.parse(data.textContent) : [];
-    document.querySelectorAll('[data-story]').forEach(function (b) { b.onclick = function () { openStory(Number(b.getAttribute('data-story'))); }; });
+    groups = data ? JSON.parse(data.textContent) : [];
+    document.querySelectorAll('[data-story]').forEach(function (b) { b.onclick = function () { show(Number(b.getAttribute('data-story')), 0); }; });
   }
   if (viewer) {
     viewer.addEventListener('click', function (e) {
       if (e.target.closest('[data-story-close]') || e.target === viewer) return closeStory();
-      if (e.target.closest('[data-story-next]')) return openStory(idx + 1);
-      if (e.target.closest('[data-story-prev]')) return openStory(Math.max(0, idx - 1));
+      if (e.target.closest('[data-story-next]')) return show(gi, si + 1);
+      if (e.target.closest('[data-story-prev]')) return show(gi, si - 1);
     });
     document.addEventListener('keydown', function (e) {
       if (viewer.hidden) return;
       if (e.key === 'Escape') closeStory();
-      if (e.key === 'ArrowRight') openStory(idx + 1);
-      if (e.key === 'ArrowLeft') openStory(Math.max(0, idx - 1));
+      if (e.key === 'ArrowRight') show(gi, si + 1);
+      if (e.key === 'ArrowLeft') show(gi, si - 1);
     });
   }
 

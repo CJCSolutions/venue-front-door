@@ -22,7 +22,7 @@ The design and page structure are fixed. The venue only edits facts, so it can't
 | Public site | Home (today or next up, stories, what's being served now), What's on with an archive, menus with diet filters, a page per event with booking, table and private-hire requests, the Circle |
 | Menu builder | As many menus as needed (breakfast, lunch, dinner, late, drinks), each with its own times and days. The site shows what is being served now and switches by itself, including menus that run past midnight. Sections, dishes, prices, diet tags, sold out, reordering |
 | Event bookings | Any event can take bookings with a number of places and a price per guest (paid on the day). Capacity is checked so the last place can't be sold twice |
-| Stories | Photo or text stories show on the site for 24 hours, then stay with the event they belong to as its archive. Can be Circle-only, and shared to Instagram from the editor |
+| Stories | Grouped in themes, like highlights (Tonight, From the kitchen, Last weekend). A theme shows a fresh ring when something new is posted. Stories linked to an event also stay on its page. Can be Circle-only, and shared to Instagram from the editor |
 | The Circle | The venue's own audience list. Guests join with name, email and consent; members see new events (Circle-first, 24 or 48 hours early) and Circle-only stories. Members download as CSV |
 | Stats | Visits per day and where they came from, bookings by source, Circle growth, and per-event takings, costs, profit, profit per hour and return per euro of marketing |
 | Live updates | Open pages check for a new version every 15 seconds and swap in fresh content |
@@ -32,6 +32,11 @@ The design and page structure are fixed. The venue only edits facts, so it can't
 | Share kit | Post (4:5) and story (9:16) images drawn in the venue's look and colour, captions in English and Spanish per channel (Instagram, Google, Facebook, WhatsApp) with tagged links (`?src=instagram`) so Stats knows what worked |
 | Inbox | Event bookings per date with arrived / no-show / cancelled, and table or hire requests, each tagged with where it came from |
 | Search data | Restaurant, opening hours, menu and upcoming events as schema.org JSON-LD |
+
+## Selling it
+
+- `/pulse` is the sales page (English, `?lang=es` for Spanish): the problem, one update to every channel, the module structure, use cases, styles, and a contact form. In demo mode every venue page carries a "Sample venue" banner pointing to it.
+- Enquiries are stored in the `leads` table and listed at `/pulse/leads` (password in `LEADS_PASSWORD`), with a CSV download. Demo resets do not touch leads.
 
 ## Run it locally
 
@@ -53,6 +58,7 @@ Without `DB_NAME` it stores data in `data/local.json`.
 | `DEMO_MODE` | `1` shows the look switcher on the site, the demo password on the login page and a reset button |
 | `PUBLIC_URL` | Full site address used in links and search data, e.g. `https://venue.foodforthought.agency` |
 | `NODE_ENV` | `production` marks the login cookie as secure |
+| `LEADS_PASSWORD` | Opens `/pulse/leads`, the list of enquiries from the sales page |
 
 Tables are created on first start.
 
