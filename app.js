@@ -4,7 +4,8 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const { createStore } = require('./lib/store');
-const { buildSchedule, findOccurrence, openStatus, labels, menusNow } = require('./lib/schedule');
+const { buildSchedule, findOccurrence, openStatus, labels, menusNow, offersNow } = require('./lib/schedule');
+const { PRESETS, MODULES, SECTIONS } = require('./lib/presets');
 const { applyAction, ActionError, LOOKS } = require('./lib/actions');
 const { buildStats } = require('./lib/stats');
 const { localNow, addDays } = require('./lib/time');
@@ -44,10 +45,16 @@ async function currentMember(req) {
 async function context(req, extra = {}) {
   const [{ data, version }, counts, member] = await Promise.all([store.getState(), store.bookedCounts(), extra.member !== undefined ? extra.member : currentMember(req)]);
   const look = DEMO && LOOKS.includes(req.query.look) ? req.query.look : data.venue.look;
+  // Demo only: preview another use case without saving it.
+  if (DEMO && PRESETS[req.query.usecase] && req.query.usecase !== data.venue.type) {
+    data.venue.type = req.query.usecase;
+    data.venue.modules = { ...PRESETS[req.query.usecase].modules };
+    data.venue.home = null;
+  }
   return {
     state: data, version, look, demo: DEMO, path: req.originalUrl, member, counts,
     schedule: buildSchedule(data, new Date(), { member: Boolean(member) }), status: openStatus(data),
-    menus: data.venue.features.menu ? menusNow(data) : [], L: labels(data), baseUrl: baseUrl(req)
+    menus: data.venue.modules.menu ? menusNow(data) : [], offers: data.venue.modules.offers ? offersNow(data) : [], L: labels(data), baseUrl: baseUrl(req)
   };
 }
 
@@ -116,16 +123,28 @@ app.use(express.static(path.join(__dirname, 'public'), { index: false, maxAge: '
 // ---------- public site ----------
 
 app.get('/', page(async (req, res) => { countVisit(req); res.send(render.homePage(await context(req))); }));
-app.get('/whats-on', page(async (req, res) => { countVisit(req); res.send(render.whatsOnPage(await context(req))); }));
+app.get('/whats-on', page(async (req, res) => {
+  countVisit(req);
+  const ctx = await context(req);
+  if (!ctx.state.venue.modules.events) return res.status(404).send(render.notFoundPage(ctx));
+  res.send(render.whatsOnPage(ctx));
+}));
+app.get('/about', page(async (req, res) => {
+  countVisit(req);
+  const ctx = await context(req);
+  if (!ctx.state.venue.modules.about && !ctx.state.venue.modules.gallery) return res.status(404).send(render.notFoundPage(ctx));
+  res.send(render.aboutPage(ctx));
+}));
+app.get('/visit', page(async (req, res) => { countVisit(req); res.send(render.visitPage(await context(req))); }));
 app.get('/menu', page(async (req, res) => {
   countVisit(req);
   const ctx = await context(req);
-  if (!ctx.state.venue.features.menu) return res.status(404).send(render.notFoundPage(ctx));
+  if (!ctx.state.venue.modules.menu) return res.status(404).send(render.notFoundPage(ctx));
   res.send(render.menuPage(ctx));
 }));
 app.get('/book', page(async (req, res) => {
   countVisit(req);
-  res.send(render.bookPage(await context(req), { values: { src: cleanSrc(req.query.src) } }));
+  res.send(render.bookPage(await context(req), { values: { src: cleanSrc(req.query.src), type: ['table', 'private', 'other'].includes(req.query.type) ? req.query.type : '' } }));
 }));
 app.get('/night/:key', (req, res) => res.redirect(301, `/event/${encodeURIComponent(req.params.key)}`));
 
@@ -147,7 +166,7 @@ app.post('/event/:key', form, page(async (req, res) => {
   const values = { name: String(b.name || '').trim().slice(0, 80), contact: String(b.contact || '').trim().slice(0, 120), guests: parseInt(b.guests, 10) || 0, src: cleanSrc(b.src) };
   const again = (status, error) => res.status(status).send(render.eventPage(ctx, o, { error, values }));
   if (b.website) return res.send(render.eventPage(ctx, o, { sent: { name: values.name, guests: values.guests || 1 } }));
-  if (!o.bookable || o.status === 'past' || !ctx.state.venue.features.bookings) return again(400, 'This one is not taking bookings.');
+  if (!o.bookable || o.status === 'past' || !ctx.state.venue.modules.bookings) return again(400, 'This one is not taking bookings.');
   if (limited('evbook:' + req.ip, 8, 10 * 60 * 1000)) return again(429, 'Too many requests. Please try again in a few minutes.');
   if (!values.name || !values.contact) return again(400, 'Please add your name and a phone number or email.');
   if (!(values.guests >= 1 && values.guests <= 20)) return again(400, 'Guests must be between 1 and 20.');
@@ -188,7 +207,7 @@ function setCircleCookie(res, token) {
 app.get('/circle', page(async (req, res) => {
   countVisit(req);
   const ctx = await context(req);
-  if (!ctx.state.venue.features.circle) return res.status(404).send(render.notFoundPage(ctx));
+  if (!ctx.state.venue.modules.circle) return res.status(404).send(render.notFoundPage(ctx));
   res.send(render.circlePage(ctx, { joined: req.query.welcome === '1' }));
 }));
 
@@ -254,7 +273,8 @@ app.get('/api/admin/state', requireAdmin, page(async (req, res) => {
     state: data, version, schedule, status: openStatus(data), menus: menusNow(data), labels: labels(data),
     changes, enquiries, bookings, members, counts,
     stats: buildStats({ state: data, schedule, bookings, members, views, enquiries }),
-    baseUrl: baseUrl(req), demo: DEMO
+    baseUrl: baseUrl(req), demo: DEMO, offers: offersNow(data),
+    catalog: { modules: MODULES, sections: SECTIONS, presets: PRESETS }
   });
 }));
 

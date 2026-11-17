@@ -55,10 +55,11 @@ img { max-width: 100%; display: block; }
 .small { color: var(--muted); font-size: 14px; }
 
 /* Demo bar */
-.demo-bar { background: #fff; color: #1c1b19; font: 600 13px 'DM Sans', sans-serif; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 24px; border-bottom: 1px solid #d8d5ce; }
+.demo-bar { background: #fff; color: #1c1b19; font: 600 13px 'DM Sans', sans-serif; display: grid; gap: 8px; padding: 10px 24px; border-bottom: 1px solid #d8d5ce; }
+.demo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .demo-bar a { text-decoration: none; border: 2px solid #1c1b19; border-radius: 99px; padding: 8px 14px; min-height: 40px; display: inline-flex; align-items: center; }
 .demo-bar a.on { background: #1c1b19; color: #fff; }
-.demo-label { text-transform: uppercase; letter-spacing: .08em; margin-right: 4px; }
+.demo-label { text-transform: uppercase; letter-spacing: .08em; margin-right: 4px; min-width: 76px; }
 .demo-bar .demo-edit { margin-left: auto; background: #c6ff3d; border-color: #c6ff3d; }
 
 /* Header */
@@ -234,3 +235,35 @@ h1 { font-size: var(--hero-size); line-height: var(--hero-line); margin: 12px 0 
 .moment { margin: 0; background: var(--card-bg); border: 1px solid var(--line); border-radius: min(var(--radius), 14px); overflow: hidden; }
 .moment img { aspect-ratio: 9 / 12; object-fit: cover; width: 100%; }
 .moment figcaption { padding: 12px 14px; font-size: 15px; }
+
+/* Offers */
+.offers { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.offer { display: flex; flex-direction: column; gap: 6px; padding: 20px; border: 1px solid var(--line); border-radius: min(var(--radius), 18px); background: var(--card-bg); }
+.offer b { font-family: var(--head); font-weight: var(--head-weight); text-transform: var(--head-case); font-size: 26px; line-height: 1.05; }
+.offer.on { border: 2px solid var(--accent); }
+.offer.on .kicker { color: var(--accent); opacity: 1; }
+[data-look="poster"] .offer.on { background: var(--hero-bg); color: var(--hero-ink); border-color: transparent; }
+[data-look="poster"] .offer.on .kicker { color: inherit; }
+.hero-offer { margin: 14px 0 0; font-size: 16px; padding: 10px 14px; border-radius: min(var(--radius), 12px); background: rgba(128,128,128,.14); display: inline-block; }
+
+/* About, gallery, hire, reviews, info */
+.about, .hire { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px; align-items: center; }
+.about-title { font-family: var(--head); font-weight: var(--head-weight); text-transform: var(--head-case); letter-spacing: var(--head-space); font-size: clamp(28px, 4vw, 44px); line-height: 1.05; margin: 0 0 14px; }
+.about-text { font-size: 18px; max-width: 54ch; margin: 0 0 12px; }
+.about-photo { width: 100%; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.g { margin: 0; position: relative; overflow: hidden; border-radius: min(var(--radius), 16px); aspect-ratio: 4 / 3; border: 1px solid var(--line); }
+.g img, .g .photo-empty { width: 100%; height: 100%; object-fit: cover; }
+.g .photo-empty { border: 0; }
+.g .photo-empty span { font-size: 72px; }
+.g figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 14px 12px; font-size: 14px; font-weight: 600; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.6)); }
+[data-look="poster"] .g { border: 0; box-shadow: 4px 5px 0 rgba(0,0,0,.4); }
+[data-look="poster"] .g-0, [data-look="poster"] .g-3 { transform: rotate(-1deg); }
+[data-look="poster"] .g-1, [data-look="poster"] .g-4 { transform: rotate(1deg); }
+.reviews { border: 1px solid var(--line); border-radius: min(var(--radius), 18px); padding: 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.reviews .big, .reviews .actions { margin: 0; }
+.info { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0 40px; margin: 0; }
+.info div { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.info dt { font-weight: 700; margin-bottom: 4px; }
+.info dd { margin: 0; color: var(--muted); }
+@media (max-width: 720px) { .demo-label { min-width: 0; width: 100%; } }

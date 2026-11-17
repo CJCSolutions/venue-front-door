@@ -6,7 +6,12 @@
 
 **What this does:** the venue changes it once, on a phone. The website updates by itself, live, for anyone already looking at it. The QR menu and the search data (schema.org) update too. For the social channels it makes a ready post (image plus caption in English and Spanish) that the venue shares from its own phone in one tap. Nothing is linked to anyone else's Meta or Google account.
 
-It fits a café, a restaurant with theme nights, or a bar that hosts events: the kind of venue is one setting that changes the wording on the site and how Google sees it.
+It is built from **modules**, bundled into **use cases**, and dressed in a **style**:
+
+- **Core modules, always on:** hours and open-now status, directions and contact.
+- **Optional modules:** About, Gallery, Good to know (parking, accessibility, dogs, wifi, kids, payment, dress code), Menus, Offers (happy hour, set lunch), Events, Event bookings, Table requests, Private hire, Order online (delivery, takeaway, vouchers), Stories, the Circle, Reviews.
+- **Use cases:** Café, Restaurant with theme nights, Bar that hosts events, Beach club or day venue. Each switches on a set of modules and orders the home page; the venue can then turn any module on or off and reorder the home page.
+- **Styles:** Poster wall, Gallery, Beach club, After dark, plus a brand colour. Any use case can wear any style.
 
 The design and page structure are fixed. The venue only edits facts, so it can't break the site. The look is one setting (Poster wall, Gallery, Beach club or After dark) plus a brand colour, and features can be switched on or off: stories, the Circle, bookings, menus.
 

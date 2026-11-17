@@ -26,7 +26,7 @@ async function login() {
 }
 
 test('public pages render with structured data', async () => {
-  for (const p of ['/', '/whats-on', '/menu', '/book', '/circle']) {
+  for (const p of ['/', '/whats-on', '/menu', '/book', '/circle', '/about', '/visit']) {
     const r = await fetch(base + p);
     assert.strictEqual(r.status, 200, p);
     const html = await r.text();
@@ -89,4 +89,17 @@ test('table enquiries are stored with their source', async () => {
   assert.strictEqual(st.enquiries[0].name, 'Ana');
   assert.strictEqual(st.enquiries[0].source, 'google');
   assert.ok(st.stats.headline.members >= 12);
+});
+
+test('a café hides events but keeps menu, about and visit', async () => {
+  const cookie = await login();
+  const post = (type, payload) => fetch(base + '/api/admin/action', { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ action: { type, payload } }) });
+  assert.strictEqual((await post('preset.set', { type: 'cafe' })).status, 200);
+  assert.strictEqual((await fetch(base + '/whats-on')).status, 404);
+  const home = await (await fetch(base + '/')).text();
+  assert.match(home, /See the menu/);
+  assert.match(home, /Good to know/);
+  assert.doesNotMatch(home, /Coming up/);
+  assert.strictEqual((await fetch(base + '/about')).status, 200);
+  await post('preset.set', { type: 'restaurant' });
 });

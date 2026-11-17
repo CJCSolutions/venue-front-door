@@ -14,8 +14,6 @@
   var EN_M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var ES_D = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   var ES_M = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-  var TYPES = { cafe: 'Café', restaurant: 'Restaurant with theme nights', bar: 'Bar that hosts events' };
-  var FEATURES = { stories: 'Stories', circle: 'The Circle', bookings: 'Bookings', menu: 'Menus' };
 
   // ---------- helpers ----------
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -48,6 +46,10 @@
       S.data = j;
       document.getElementById('title').textContent = j.state.venue.name;
       if (!S.menuId || !j.state.menus.some(function (m) { return m.id === S.menuId; })) S.menuId = j.state.menus[0] ? j.state.menus[0].id : null;
+      var Mo = j.state.venue.modules;
+      var vis = { events: Mo.events, menu: Mo.menu || Mo.offers, inbox: Mo.tables || Mo.hire || Mo.bookings, circle: Mo.circle };
+      Object.keys(vis).forEach(function (k) { tabs.querySelector('[data-tab="' + k + '"]').classList.toggle('hidden', !vis[k]); });
+      if (vis[S.tab] === false) S.tab = 'today';
       var waiting = j.enquiries.filter(function (e) { return e.status === 'new'; }).length;
       var btn = tabs.querySelector('[data-tab="inbox"]'), badge = btn.querySelector('.badge');
       if (waiting) { if (!badge) { badge = document.createElement('i'); badge.className = 'badge'; btn.appendChild(badge); } badge.textContent = waiting; }
@@ -110,7 +112,7 @@
     var j = S.data, sc = j.schedule, st = j.status, v = V();
     var serving = j.menus.find(function (m) { return m.active; });
     var live = (j.state.stories || []).filter(function (s) { return Date.parse(s.at) > Date.now() - 86400000; });
-    var html = '<p class="muted">' + esc(shortDate(sc.today)) + ' · ' + esc(TYPES[v.type]) + '</p><h2>Today</h2>';
+    var html = '<p class="muted">' + esc(shortDate(sc.today)) + ' · ' + esc(S.data.catalog.presets[v.type].label) + '</p><h2>Today</h2>';
     html += '<div class="card"><span class="pill ' + (st.open ? 'ok' : 'bad') + '">' + esc(st.label) + '</span>' +
       (serving ? ' <span class="pill plain">Serving ' + esc(serving.name) + '</span>' : '') +
       (sc.tonight.length ? sc.tonight.map(function (o) {
@@ -118,9 +120,10 @@
           '<div class="btnrow"><button class="btn small dark" data-share="' + esc(o.key) + '">Share ↗</button><button class="btn small" data-results="' + esc(o.key) + '">Bookings & results</button><button class="btn small" data-edit-event="' + esc(o.eventId) + '">Edit</button></div></div>';
       }).join('') : '<p style="margin:10px 0 0">Nothing on today. The site leads with the next ' + esc(L().event.toLowerCase()) + ' and what is on the menu.</p>') + '</div>';
     html += '<div class="quick">' +
-      '<button class="dark" data-go="newevent"><span>＋</span><span>Add ' + esc(L().event.toLowerCase()) + '</span></button>' +
-      (v.features.stories ? '<button data-go="story"><span>◐</span><span>Post a story' + (live.length ? ' <small>(' + live.length + ' live)</small>' : '') + '</span></button>' : '') +
-      (v.features.menu ? '<button data-go="menu"><span>≡</span><span>Edit menu</span></button>' : '') +
+      (v.modules.events ? '<button class="dark" data-go="newevent"><span>＋</span><span>Add ' + esc(L().event.toLowerCase()) + '</span></button>' : '') +
+      (v.modules.offers ? '<button data-go="newoffer"><span>%</span><span>Add an offer</span></button>' : '') +
+      (v.modules.stories ? '<button data-go="story"><span>◐</span><span>Post a story' + (live.length ? ' <small>(' + live.length + ' live)</small>' : '') + '</span></button>' : '') +
+      (v.modules.menu ? '<button data-go="menu"><span>≡</span><span>Edit menu</span></button>' : '') +
       '<button data-go="closetoday"><span>✕</span><span>' + (st.special && !st.today ? 'Open today after all' : 'Close today') + '</span></button></div>';
     if (S.lastChange) html += '<h3>Your last change</h3>' + touchpointsHtml(S.lastChange);
     html += '<h3>Coming up</h3>' + sc.upcoming.slice(0, 6).map(function (o) {
@@ -164,7 +167,14 @@
   function viewMenu() {
     var menus = S.data.state.menus, m = curMenu();
     var active = S.data.menus.filter(function (x) { return x.active; }).map(function (x) { return x.id; });
-    var html = '<h2>Menus</h2><div class="chips">' + menus.map(function (x) {
+    var html = '';
+    if (V().modules.offers) {
+      html += '<h2>Offers</h2><p class="muted">Show on the site only while they are on, with a badge.</p>' + S.data.offers.map(function (o) {
+        return '<div class="row"><div class="grow"><b>' + esc(o.name) + '</b>' + (o.active ? ' <span class="pill ok">On now</span>' : '') + '<span class="muted">' + esc(o.days.map(function (k) { return DAY_NAME[k]; }).join(', ')) + ' · ' + esc(o.from) + '–' + esc(o.to) + '</span></div><button class="btn small" data-edit-offer="' + esc(o.id) + '">Edit</button></div>';
+      }).join('') + '<button class="btn small" style="margin:10px 0 18px" data-go="newoffer">＋ Add an offer</button>';
+    }
+    if (!V().modules.menu) { view.innerHTML = html; return; }
+    html += '<h2>Menus</h2><div class="chips">' + menus.map(function (x) {
       return '<button data-menu="' + esc(x.id) + '" class="' + (x.id === S.menuId ? 'on' : '') + '">' + esc(x.name) + (active.indexOf(x.id) >= 0 ? ' •' : '') + '</button>';
     }).join('') + '<button data-new-menu>＋ Menu</button></div>';
     if (!m) { view.innerHTML = html + '<p class="muted">No menus yet. Add one: breakfast, lunch, dinner, drinks, brunch…</p>'; return; }
@@ -216,7 +226,7 @@
   // ---------- Circle ----------
   function viewCircle() {
     var j = S.data, st = j.stats, v = V();
-    if (!v.features.circle) { view.innerHTML = '<h2>The Circle</h2><div class="card">The Circle is switched off. Turn it on under More → Features.</div>'; return; }
+    if (!v.modules.circle) { view.innerHTML = '<h2>The Circle</h2><div class="card">The Circle is switched off. Turn it on under More → Modules.</div>'; return; }
     var early = allUpcoming().filter(function (o) { return o.circleFirst; });
     var stories = (j.state.stories || []).filter(function (s) { return s.circleOnly; }).slice(-5).reverse();
     var joinUrl = j.baseUrl + '/circle?src=print';
@@ -224,7 +234,7 @@
       '<div class="tiles"><div class="tile"><b>' + st.headline.members + '</b><span>members</span></div><div class="tile"><b>+' + st.headline.newMembers + '</b><span>last 30 days</span></div></div>' +
       '<h3>Give them something first</h3>' +
       '<div class="quick"><button class="dark" data-go="newevent-circle"><span>＋</span><span>Circle-first ' + esc(L().event.toLowerCase()) + '</span></button>' +
-      (v.features.stories ? '<button data-go="story-circle"><span>◐</span><span>Circle-only story</span></button>' : '') + '</div>' +
+      (v.modules.stories ? '<button data-go="story-circle"><span>◐</span><span>Circle-only story</span></button>' : '') + '</div>' +
       (early.length ? '<div class="card"><b>Members see these now</b>' + early.map(function (o) { return '<div class="row"><div class="grow">' + esc(o.name) + '<span class="muted">' + esc(shortDate(o.date)) + ' · public ' + esc(new Date(o.publicFrom).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })) + '</span></div></div>'; }).join('') + '</div>' : '') +
       (stories.length ? '<div class="card"><b>Circle stories</b>' + stories.map(function (s) { return '<div class="row"><div class="grow">' + esc(s.caption || 'Photo') + '</div></div>'; }).join('') + '</div>' : '') +
       '<h3>Ways in</h3><div class="card"><b>Join link</b><div class="muted" style="word-break:break-all">' + esc(joinUrl) + '</div><div class="btnrow"><button class="btn small" data-copy="' + esc(joinUrl) + '">Copy link</button></div><p class="muted" style="margin:8px 0 0">Put it on posters, the menu QR, your Instagram bio and receipts. Every signup is tagged with where it came from.</p></div>' +
@@ -267,7 +277,27 @@
   function viewMore() {
     var v = V(), st = S.data.state;
     var w = st.hours.weekly;
-    view.innerHTML = '<h2>More</h2>' +
+    var C = S.data.catalog, P = C.presets;
+    var order = (v.home && v.home.length ? v.home : P[v.type].home).slice();
+    Object.keys(C.sections).forEach(function (k) { if (order.indexOf(k) < 0) order.push(k); });
+    var shows = function (k) { var mod = C.sections[k].module; return !mod || v.modules[mod]; };
+    view.innerHTML = '<h2>Your site</h2>' +
+      '<h3>Use case</h3><p class="muted">A starting point: which modules are on and what the home page leads with. Change any of it below.</p>' +
+      '<div class="presets">' + Object.keys(P).map(function (k) {
+        return '<button class="preset ' + (v.type === k ? 'on' : '') + '" data-preset="' + k + '"><b>' + esc(P[k].label) + '</b><span>' + esc(P[k].pitch) + '</span></button>';
+      }).join('') + '</div>' +
+      '<h3>Modules</h3>' + Object.keys(C.modules).map(function (k) {
+        var m = C.modules[k];
+        return '<div class="row"><div class="grow"><b>' + esc(m.label) + '</b><span class="muted">' + esc(m.about) + '</span></div>' +
+          (m.core ? '<span class="pill plain">Always on</span>' : '<button class="toggle ' + (v.modules[k] ? 'on' : 'off') + '" data-module="' + k + '">' + (v.modules[k] ? 'On' : 'Off') + '</button>') + '</div>';
+      }).join('') +
+      '<h3>Home page order</h3><p class="muted">Top to bottom. Greyed-out sections belong to modules that are off.</p>' + order.map(function (k, i) {
+        return '<div class="row' + (shows(k) ? '' : ' dim') + '"><div class="grow"><b>' + esc(C.sections[k].label) + '</b></div><span class="mover"><button aria-label="Move up" data-home-move="' + k + '|up" ' + (i === 0 ? 'disabled' : '') + '>↑</button><button aria-label="Move down" data-home-move="' + k + '|down" ' + (i === order.length - 1 ? 'disabled' : '') + '>↓</button></span></div>';
+      }).join('') +
+      '<h3>Page content</h3><div class="quick">' +
+      [['about', 'About', '✎'], ['gallery', 'Gallery', '▦'], ['info', 'Good to know', 'i'], ['hire', 'Private hire', '◇'], ['links', 'Links, ordering, reviews', '↗']].filter(function (c) { return c[0] === 'links' || v.modules[c[0]]; }).map(function (c) {
+        return '<button data-content="' + c[0] + '"><span>' + c[2] + '</span><span>' + c[1] + '</span></button>';
+      }).join('') + '</div>' +
       '<h3>Hours</h3><div class="card"><b>Today</b> <span class="pill ' + (S.data.status.open ? 'ok' : 'bad') + '">' + esc(S.data.status.label) + '</span>' +
       '<div class="chips" style="margin-top:12px"><button data-today="normal">Normal hours</button><button data-today="closed">Closed today</button><button data-today="custom">Different times</button></div>' +
       '<div id="customToday" class="hidden"><div class="grid2"><label class="f">Open<input type="time" id="tOpen" value="18:00"></label><label class="f">Close<input type="time" id="tClose" value="02:00"></label></div><button class="btn dark block" data-today="save">Save today’s hours</button></div></div>' +
@@ -282,10 +312,6 @@
         return '<button data-look="' + k + '" class="' + (v.look === k ? 'on' : '') + '"><div class="sw" style="background:' + Lk.bg + ';color:' + Lk.text + ';font-family:\'' + Lk.head + '\';font-weight:' + Lk.weight + ';' + (Lk.upper ? 'text-transform:uppercase;' : '') + '"><span style="display:inline-block;width:28px;height:8px;background:' + acc + ';margin-bottom:8px"></span>' + esc(v.name) + '</div><div class="nm">' + Lk.name + '</div></button>';
       }).join('') + '</div>' +
       '<div class="card" style="margin-top:12px"><label class="f" style="margin:0">Brand colour<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><input type="color" id="accent" value="' + esc(v.accent || '#e9b52f') + '" style="width:64px;padding:4px"><button class="btn small" data-accent="set">Use this colour</button>' + (v.accent ? '<button class="btn small" data-accent="clear">Use the look’s own</button>' : '') + '</span></label></div>' +
-
-      '<h3>Kind of venue</h3><div class="chips">' + Object.keys(TYPES).map(function (k) { return '<button data-type="' + k + '" class="' + (v.type === k ? 'on' : '') + '">' + esc(TYPES[k]) + '</button>'; }).join('') + '</div>' +
-      '<p class="muted">Changes the wording on the site (events, theme nights, line-up) and how Google sees you.</p>' +
-      '<h3>Features</h3>' + Object.keys(FEATURES).map(function (k) { return '<div class="row"><div class="grow"><b>' + FEATURES[k] + '</b></div><button class="toggle ' + (v.features[k] ? 'on' : 'off') + '" data-feature="' + k + '">' + (v.features[k] ? 'On' : 'Off') + '</button></div>'; }).join('') +
 
       '<h3>Venue details</h3><form id="venueForm">' +
       [['name', 'Name'], ['tagline', 'Tagline'], ['address', 'Address'], ['phone', 'Phone'], ['email', 'Email'], ['instagram', 'Instagram handle'], ['googleProfileUrl', 'Google profile link']].map(function (f) {
@@ -377,7 +403,7 @@
       '<h3>Bookings</h3><div class="row"><div class="grow"><b>Take bookings on the site</b><span class="muted">Guests book a place; you see them in the Inbox</span></div><button type="button" class="toggle ' + (e.bookable ? 'on' : 'off') + '" data-bookable>' + (e.bookable ? 'On' : 'Off') + '</button></div>' +
       '<input type="hidden" name="bookable" value="' + (e.bookable ? '1' : '') + '">' +
       '<div class="grid2 ' + (e.bookable ? '' : 'hidden') + '" id="bookFields" style="margin-top:12px"><label class="f">Places (each date)<input type="number" name="capacity" min="1" inputmode="numeric" value="' + esc(e.capacity || '') + '" placeholder="No limit"></label><label class="f">Price each (€)<input type="number" name="price" min="0" step="0.5" inputmode="decimal" value="' + esc(e.price == null ? '' : e.price) + '" placeholder="Free"></label></div>' +
-      (V().features.circle ? '<h3>The Circle</h3><label class="f">Who sees it first</label><div class="chips">' + circleOpts.map(function (c) { return '<button type="button" data-circle="' + c[0] + '" class="' + (c[0] === circleDefault ? 'on' : '') + '">' + c[1] + '</button>'; }).join('') + '</div><input type="hidden" name="circleHours" value="' + circleDefault + '">' : '') +
+      (V().modules.circle ? '<h3>The Circle</h3><label class="f">Who sees it first</label><div class="chips">' + circleOpts.map(function (c) { return '<button type="button" data-circle="' + c[0] + '" class="' + (c[0] === circleDefault ? 'on' : '') + '">' + c[1] + '</button>'; }).join('') + '</div><input type="hidden" name="circleHours" value="' + circleDefault + '">' : '') +
       '<div id="evErr" style="margin-top:14px"></div><button class="btn dark block" type="submit" style="margin-top:8px">' + (ev ? 'Save' : 'Add ' + lab.event.toLowerCase()) + '</button></form>' +
       (ev && e.repeat !== 'none' ? '<h3>Next dates</h3><p class="muted">Cancel one date without touching the rest.</p>' +
         dates.map(function (o) { return '<div class="row"><div class="grow">' + esc(shortDate(o.date)) + '</div><button class="btn small" data-skip="' + esc(o.date) + '">Cancel this date</button></div>'; }).join('') +
@@ -454,7 +480,7 @@
       '<form id="stForm">' + photoPicker(null) +
       '<label class="f" style="margin-top:14px">A line (optional with a photo)<input name="caption" maxlength="160" placeholder="Soundcheck done. Doors at 22:00."></label>' +
       '<label class="f">Belongs to<select name="eventKey"><option value="">Nothing in particular</option>' + upcoming.map(function (o) { return '<option value="' + esc(o.key) + '"' + (o.date === S.data.schedule.today ? ' selected' : '') + '>' + esc(whenWord(o)) + ' · ' + esc(o.name) + '</option>'; }).join('') + '</select></label>' +
-      (V().features.circle ? '<label class="consentrow"><input type="checkbox" name="circleOnly" ' + (circle ? 'checked' : '') + '> Circle members only</label>' : '') +
+      (V().modules.circle ? '<label class="consentrow"><input type="checkbox" name="circleOnly" ' + (circle ? 'checked' : '') + '> Circle members only</label>' : '') +
       '<div id="stErr"></div><button class="btn dark block" type="submit">Post story</button></form>' +
       (live.length ? '<h3>Live now</h3>' + live.map(function (s) { return '<div class="row"><div class="grow">' + esc(s.caption || 'Photo') + '<span class="muted">' + (s.circleOnly ? 'Circle only · ' : '') + Math.max(0, Math.round((Date.now() - Date.parse(s.at)) / 3600000)) + 'h ago</span></div><button class="btn small" data-share-story="' + esc(s.id) + '">Share</button><button class="btn small" data-del-story="' + esc(s.id) + '">Remove</button></div>'; }).join('') : ''));
     var form = $('#stForm');
@@ -530,6 +556,93 @@
     openSheet(head('Done') + touchpointsHtml(change) +
       (occ ? '<button class="btn dark block" data-share="' + esc(occ.key) + '" style="margin-top:8px">Share it now ↗</button>' : '') +
       '<a class="btn block" href="' + (occ ? '/event/' + encodeURIComponent(occ.key) : '/') + '" target="_blank" rel="noopener" style="margin-top:10px">See it on the site</a>');
+  }
+
+  // ---------- page content sheets ----------
+  function aboutSheet() {
+    var a = S.data.state.about || {};
+    openSheet(head('About') + '<form id="abForm"><label class="f">Headline<input name="title" maxlength="80" value="' + esc(a.title) + '" placeholder="A harbour bar that never quite closes"></label>' +
+      '<label class="f">Your story, in a few lines<textarea name="text" rows="5" maxlength="900">' + esc(a.text) + '</textarea></label>' +
+      '<label class="f">Photo</label>' + photoPicker(a.photo) + '<div id="abErr" style="margin-top:12px"></div><button class="btn dark block" type="submit" style="margin-top:12px">Save</button></form>');
+    var form = $('#abForm'); bindPhoto(form);
+    form.addEventListener('submit', function (e) { e.preventDefault(); act('about.save', { title: form.title.value, text: form.text.value, photo: form.photo.value || null }).then(function (j) { closeSheet(); toast(j.change.summary + ' · live'); }).catch(function (err) { errBox('#abErr', err); }); });
+  }
+
+  function gallerySheet() {
+    var g = S.data.state.gallery || [];
+    openSheet(head('Gallery') + '<p class="muted">Up to 24 photos. The first six show on the home page.</p>' +
+      '<form id="gaForm">' + photoPicker(null) + '<label class="f" style="margin-top:12px">Caption (optional)<input name="caption" maxlength="80" placeholder="The terrace at sunset"></label><div id="gaErr"></div><button class="btn dark block" type="submit">Add to gallery</button></form>' +
+      '<h3>In the gallery</h3>' + g.map(function (x, i) {
+        return '<div class="row"><div class="thumb">' + (x.photo ? '<img src="/photos/' + esc(x.photo) + '" alt="">' : '<span>' + esc((x.caption || '·').charAt(0)) + '</span>') + '</div><div class="grow"><input class="inline" data-cap="' + esc(x.id) + '" value="' + esc(x.caption) + '" maxlength="80" aria-label="Caption"><span class="mover"><button aria-label="Move up" data-gmove="' + esc(x.id) + '|up" ' + (i === 0 ? 'disabled' : '') + '>↑</button><button aria-label="Move down" data-gmove="' + esc(x.id) + '|down" ' + (i === g.length - 1 ? 'disabled' : '') + '>↓</button></span></div><button class="btn small" data-gdel="' + esc(x.id) + '">Remove</button></div>';
+      }).join(''));
+    var form = $('#gaForm'); bindPhoto(form);
+    form.addEventListener('submit', function (e) { e.preventDefault(); act('gallery.add', { photo: form.photo.value, caption: form.caption.value }).then(function () { toast('Photo added · live'); gallerySheet(); }).catch(function (err) { errBox('#gaErr', err); }); });
+    $$('[data-cap]', sheet).forEach(function (inp) { inp.addEventListener('change', function () { act('gallery.update', { id: inp.getAttribute('data-cap'), caption: inp.value }).then(function () { toast('Caption saved'); }).catch(fail); }); });
+    $$('[data-gdel]', sheet).forEach(function (b) { b.addEventListener('click', function () { act('gallery.delete', { id: b.getAttribute('data-gdel') }).then(gallerySheet).catch(fail); }); });
+    $$('[data-gmove]', sheet).forEach(function (b) { b.addEventListener('click', function () { var x = b.getAttribute('data-gmove').split('|'); act('gallery.move', { id: x[0], dir: x[1] }).then(gallerySheet).catch(fail); }); });
+  }
+
+  function infoSheet() {
+    var rows = (S.data.state.info || []).slice();
+    var starters = ['Parking', 'Accessibility', 'Dogs', 'Kids', 'Wifi', 'Payment', 'Dress code', 'Smoking', 'Reservations', 'Allergies'];
+    function rowHtml(r) { return '<div class="qa"><input data-q value="' + esc(r.q) + '" placeholder="Topic" maxlength="40" aria-label="Topic"><textarea data-a rows="2" maxlength="300" placeholder="Answer" aria-label="Answer">' + esc(r.a) + '</textarea><button type="button" aria-label="Remove" onclick="this.parentNode.remove()">✕</button></div>'; }
+    openSheet(head('Good to know') + '<p class="muted">The questions staff answer every day. Shown on the home and Visit pages.</p>' +
+      '<div class="chips">' + starters.filter(function (q) { return !rows.some(function (r) { return r.q === q; }); }).map(function (q) { return '<button type="button" data-starter="' + esc(q) + '">＋ ' + esc(q) + '</button>'; }).join('') + '</div>' +
+      '<form id="inForm"><div id="qaList">' + rows.map(rowHtml).join('') + '</div><button type="button" class="btn small" id="qaAdd" style="margin-bottom:14px">＋ Add your own</button><div id="inErr"></div><button class="btn dark block" type="submit">Save</button></form>');
+    $$('[data-starter]', sheet).forEach(function (b) { b.addEventListener('click', function () { $('#qaList').insertAdjacentHTML('beforeend', rowHtml({ q: b.getAttribute('data-starter'), a: '' })); b.remove(); $('#qaList .qa:last-child textarea').focus(); }); });
+    $('#qaAdd').addEventListener('click', function () { $('#qaList').insertAdjacentHTML('beforeend', rowHtml({ q: '', a: '' })); });
+    $('#inForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var info = $$('.qa', sheet).map(function (r) { return { q: $('[data-q]', r).value, a: $('[data-a]', r).value }; });
+      act('info.save', { info: info }).then(function (j) { closeSheet(); toast(j.change.summary + ' · live'); }).catch(function (err) { errBox('#inErr', err); });
+    });
+  }
+
+  function hireSheet() {
+    var h = S.data.state.hire || { text: '', spaces: [] };
+    function sp(x) { return '<div class="dj"><input data-s-name value="' + esc(x.name) + '" placeholder="Space" maxlength="40" aria-label="Space"><input data-s-cap type="number" min="1" value="' + esc(x.capacity || '') + '" placeholder="Guests" aria-label="Guests"><button type="button" aria-label="Remove" onclick="this.parentNode.remove()">✕</button></div>'; }
+    openSheet(head('Private hire') + '<form id="hiForm"><label class="f">What you offer<textarea name="text" rows="3" maxlength="500">' + esc(h.text) + '</textarea></label>' +
+      '<label class="f">Spaces and capacity</label><div id="spList">' + (h.spaces.length ? h.spaces : [{ name: '', capacity: '' }]).map(sp).join('') + '</div><button type="button" class="btn small" id="spAdd" style="margin-bottom:14px">＋ Add a space</button>' +
+      '<p class="muted">Enquiries arrive in the Inbox as private hire requests.</p><div id="hiErr"></div><button class="btn dark block" type="submit">Save</button></form>');
+    $('#spAdd').addEventListener('click', function () { $('#spList').insertAdjacentHTML('beforeend', sp({ name: '', capacity: '' })); });
+    $('#hiForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var spaces = $$('#spList .dj', sheet).map(function (r) { return { name: $('[data-s-name]', r).value, capacity: $('[data-s-cap]', r).value }; });
+      act('hire.save', { text: e.target.text.value, spaces: spaces }).then(function (j) { closeSheet(); toast(j.change.summary + ' · live'); }).catch(function (err) { errBox('#hiErr', err); });
+    });
+  }
+
+  function linksSheet() {
+    var l = S.data.state.links || { order: [] };
+    function ol(x) { return '<div class="dj link2"><input data-o-label value="' + esc(x.label) + '" placeholder="Takeaway on Glovo" maxlength="40" aria-label="Link name"><input data-o-url value="' + esc(x.url) + '" placeholder="https://" aria-label="Link"><button type="button" aria-label="Remove" onclick="this.parentNode.remove()">✕</button></div>'; }
+    openSheet(head('Links') + '<form id="lkForm"><label class="f">WhatsApp number<input name="whatsapp" value="' + esc(l.whatsapp) + '" placeholder="+34 600 000 000" inputmode="tel"></label>' +
+      '<label class="f">Google review link<input name="googleReview" value="' + esc(l.googleReview) + '" placeholder="https://g.page/r/…/review"></label>' +
+      '<label class="f">TripAdvisor link<input name="tripadvisor" value="' + esc(l.tripadvisor) + '" placeholder="https://www.tripadvisor.com/…"></label>' +
+      '<label class="f">Order online, takeaway, gift vouchers</label><div id="olList">' + (l.order && l.order.length ? l.order : [{ label: '', url: '' }]).map(ol).join('') + '</div><button type="button" class="btn small" id="olAdd" style="margin-bottom:14px">＋ Add a link</button>' +
+      '<div id="lkErr"></div><button class="btn dark block" type="submit">Save</button></form>');
+    $('#olAdd').addEventListener('click', function () { $('#olList').insertAdjacentHTML('beforeend', ol({ label: '', url: '' })); });
+    $('#lkForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = e.target, order = $$('#olList .dj', sheet).map(function (r) { return { label: $('[data-o-label]', r).value, url: $('[data-o-url]', r).value }; });
+      act('links.save', { whatsapp: f.whatsapp.value, googleReview: f.googleReview.value, tripadvisor: f.tripadvisor.value, order: order }).then(function (j) { closeSheet(); toast(j.change.summary); }).catch(function (err) { errBox('#lkErr', err); });
+    });
+  }
+
+  function offerSheet(o) {
+    var x = o || { name: '', detail: '', days: DAYS.slice(0, 5), from: '18:00', to: '20:00' };
+    openSheet(head(o ? 'Edit offer' : 'New offer') + '<form id="ofForm"><label class="f">Name<input name="name" required maxlength="50" value="' + esc(x.name) + '" placeholder="Happy hour"></label>' +
+      '<label class="f">Details<input name="detail" maxlength="160" value="' + esc(x.detail) + '" placeholder="Two spritzes for €15"></label>' +
+      '<div class="grid2"><label class="f">From<input type="time" name="from" value="' + esc(x.from) + '"></label><label class="f">Until<input type="time" name="to" value="' + esc(x.to) + '"></label></div>' +
+      '<label class="f">Days</label><div class="chips">' + DAYS.map(function (k) { return '<label class="daychip"><input type="checkbox" name="day" value="' + k + '" ' + (x.days.indexOf(k) >= 0 ? 'checked' : '') + '><span>' + DAY_NAME[k] + '</span></label>'; }).join('') + '</div>' +
+      '<div id="ofErr"></div><button class="btn dark block" type="submit">' + (o ? 'Save' : 'Add offer') + '</button></form>' +
+      (o ? '<div style="margin-top:10px"><button class="btn danger block" data-del-offer>Remove offer</button></div>' : ''));
+    var form = $('#ofForm');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      act('offer.save', { id: o ? o.id : undefined, name: form.name.value, detail: form.detail.value, from: form.from.value, to: form.to.value, days: $$('[name=day]', form).filter(function (c) { return c.checked; }).map(function (c) { return c.value; }) })
+        .then(function (j) { closeSheet(); toast(j.change.summary + ' · live'); }).catch(function (err) { errBox('#ofErr', err); });
+    });
+    if (o) $('[data-del-offer]', sheet).addEventListener('click', function () { act('offer.delete', { id: o.id }).then(function (j) { closeSheet(); toast(j.change.summary); }).catch(fail); });
   }
 
   // ---------- share kit ----------
@@ -610,7 +723,7 @@
   function split(t, attr) { return t.getAttribute(attr).split('|'); }
 
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-close], [data-close-bg], [data-go], [data-share], [data-share-story], [data-del-story], [data-edit-event], [data-results], [data-menu], [data-new-menu], [data-edit-menu], [data-edit-section], [data-new-section], [data-new-item], [data-edit-item], [data-price], [data-sold], [data-move], [data-inbox], [data-enq], [data-today], [data-look], [data-accent], [data-type], [data-feature], [data-copy], [data-reset], [data-logout]');
+    var t = e.target.closest('[data-close], [data-close-bg], [data-go], [data-share], [data-share-story], [data-del-story], [data-edit-event], [data-results], [data-menu], [data-new-menu], [data-edit-menu], [data-edit-section], [data-new-section], [data-new-item], [data-edit-item], [data-price], [data-sold], [data-move], [data-inbox], [data-enq], [data-today], [data-look], [data-accent], [data-preset], [data-module], [data-home-move], [data-content], [data-edit-offer], [data-copy], [data-reset], [data-logout]');
     if (!t || t.disabled) return;
     if (t.hasAttribute('data-close-bg')) { if (e.target === t) closeSheet(); return; }
     if (t.hasAttribute('data-close')) return closeSheet();
@@ -622,6 +735,7 @@
     if (t.hasAttribute('data-go')) {
       var g = t.getAttribute('data-go');
       if (g === 'newevent') return eventSheet(null);
+      if (g === 'newoffer') return offerSheet(null);
       if (g === 'newevent-circle') return eventSheet(null, { circle: true });
       if (g === 'story') return storySheet(false);
       if (g === 'story-circle') return storySheet(true);
@@ -651,8 +765,16 @@
     }
     if (t.hasAttribute('data-look')) return act('look.set', { look: t.getAttribute('data-look') }).then(function () { toast('Look changed. The whole site has switched.'); }).catch(fail);
     if (t.hasAttribute('data-accent')) return act('look.set', { look: V().look, accent: t.getAttribute('data-accent') === 'set' ? $('#accent').value : null }).then(function () { toast('Brand colour updated everywhere'); }).catch(fail);
-    if (t.hasAttribute('data-type')) return act('venue.save', venuePayload({ type: t.getAttribute('data-type') })).then(function () { toast('Wording updated across the site'); }).catch(fail);
-    if (t.hasAttribute('data-feature')) { var f = t.getAttribute('data-feature'), feats = {}; feats[f] = !V().features[f]; return act('venue.save', venuePayload({ features: feats })).then(function () { toast(FEATURES[f] + (feats[f] ? ' on' : ' off')); }).catch(fail); }
+    if (t.hasAttribute('data-preset')) {
+      var pk = t.getAttribute('data-preset');
+      if (pk === V().type) return;
+      if (!window.confirm('Switch to ' + S.data.catalog.presets[pk].label + '? This resets which modules are on and the home page order. Your content stays.')) return;
+      return act('preset.set', { type: pk }).then(function (j) { toast(j.change.summary); }).catch(fail);
+    }
+    if (t.hasAttribute('data-module')) return act('module.toggle', { module: t.getAttribute('data-module') }).then(function (j) { toast(j.change.summary); }).catch(fail);
+    if (t.hasAttribute('data-home-move')) { var hm = split(t, 'data-home-move'); return act('home.move', { section: hm[0], dir: hm[1] }).catch(fail); }
+    if (t.hasAttribute('data-content')) return ({ about: aboutSheet, gallery: gallerySheet, info: infoSheet, hire: hireSheet, links: linksSheet })[t.getAttribute('data-content')]();
+    if (t.hasAttribute('data-edit-offer')) return offerSheet(S.data.state.offers.find(function (o) { return o.id === t.getAttribute('data-edit-offer'); }));
     if (t.hasAttribute('data-copy')) return copy(t.getAttribute('data-copy')).then(function () { toast('Copied'); });
     if (t.hasAttribute('data-reset')) {
       if (!window.confirm('Reset all demo data back to the start?')) return;

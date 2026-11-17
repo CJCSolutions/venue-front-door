@@ -91,3 +91,28 @@ test('stats rank events by profit', () => {
   assert.strictEqual(s.ranking[0].name, 'House Friday');
   assert.ok(s.headline.revenue > 0);
 });
+
+const { homeSections, PRESETS } = require('../lib/presets');
+
+test('use cases switch modules and home order; core modules stay on', () => {
+  let state = seedState(FRI_EVENING);
+  state = applyAction(state, { type: 'preset.set', payload: { type: 'cafe' } }).state;
+  assert.strictEqual(state.venue.modules.events, false);
+  assert.strictEqual(state.venue.modules.menu, true);
+  assert.deepStrictEqual(homeSections(state.venue).slice(0, 3), ['hero', 'menu', 'offers']);
+  assert.throws(() => applyAction(state, { type: 'module.toggle', payload: { module: 'hours' } }), /always on/);
+  state = applyAction(state, { type: 'module.toggle', payload: { module: 'events' } }).state;
+  assert.strictEqual(homeSections(state.venue).at(-1), 'events', 'a module switched on joins the end of the home page');
+  state = applyAction(state, { type: 'home.move', payload: { section: 'gallery', dir: 'up' } }).state;
+  assert.ok(state.venue.home.indexOf('gallery') < PRESETS.cafe.home.indexOf('gallery'));
+  for (const k of Object.keys(PRESETS)) assert.ok(homeSections({ ...state.venue, type: k, modules: PRESETS[k].modules, home: null }).includes('visit'));
+});
+
+test('offers show as on during their window', () => {
+  const { offersNow } = require('../lib/schedule');
+  const state = seedState(FRI_EVENING);
+  const at = (iso) => offersNow(state, new Date(iso)).filter((o) => o.active).map((o) => o.name);
+  assert.deepStrictEqual(at('2026-11-20T17:30:00Z'), ['Spritz hour']); // 18:30 Fri
+  assert.deepStrictEqual(at('2026-11-20T12:30:00Z'), ['Menú del día']); // 13:30 Fri
+  assert.deepStrictEqual(at('2026-11-21T12:30:00Z'), []); // Sat lunch: weekdays only
+});
