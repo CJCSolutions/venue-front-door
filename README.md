@@ -1,22 +1,31 @@
-# Venue Front Door
+# Venue Front Door, powered by Pulse
 
 **The problem:** a venue changes something (tonight's DJ, a price, a sold-out dish, the hours) and it has to be updated in many places: the website, the QR menu, Google, Instagram, Facebook. Most venues don't keep up, so their website is stale and guests get wrong information.
 
+**Pulse** is the engine underneath: one update, every channel.
+
 **What this does:** the venue changes it once, on a phone. The website updates by itself, live, for anyone already looking at it. The QR menu and the search data (schema.org) update too. For the social channels it makes a ready post (image plus caption in English and Spanish) that the venue shares from its own phone in one tap. Nothing is linked to anyone else's Meta or Google account.
 
-The design and page structure are fixed. The venue only edits facts, so it can't break the site. The look is one setting: Poster wall, Gallery, Beach club or After dark.
+It fits a café, a restaurant with theme nights, or a bar that hosts events: the kind of venue is one setting that changes the wording on the site and how Google sees it.
+
+The design and page structure are fixed. The venue only edits facts, so it can't break the site. The look is one setting (Poster wall, Gallery, Beach club or After dark) plus a brand colour, and features can be switched on or off: stories, the Circle, bookings, menus.
 
 ## What's in it
 
 | Part | What it does |
 |---|---|
-| Public site | Home (tonight or next up), What's on with an archive of past nights, Menu with diet filters, Book form, a page per night |
+| Public site | Home (today or next up, stories, what's being served now), What's on with an archive, menus with diet filters, a page per event with booking, table and private-hire requests, the Circle |
+| Menu builder | As many menus as needed (breakfast, lunch, dinner, late, drinks), each with its own times and days. The site shows what is being served now and switches by itself, including menus that run past midnight. Sections, dishes, prices, diet tags, sold out, reordering |
+| Event bookings | Any event can take bookings with a number of places and a price per guest (paid on the day). Capacity is checked so the last place can't be sold twice |
+| Stories | Photo or text stories show on the site for 24 hours, then stay with the event they belong to as its archive. Can be Circle-only, and shared to Instagram from the editor |
+| The Circle | The venue's own audience list. Guests join with name, email and consent; members see new events (Circle-first, 24 or 48 hours early) and Circle-only stories. Members download as CSV |
+| Stats | Visits per day and where they came from, bookings by source, Circle growth, and per-event takings, costs, profit, profit per hour and return per euro of marketing |
 | Live updates | Open pages check for a new version every 15 seconds and swap in fresh content |
-| Tonight logic | Works out tonight from the date. A night runs until 06:00, so a 03:00 set still counts as that night. Recurring nights (weekly, monthly) make a dated copy each time; one date can be cancelled without touching the rest. Past nights move to the archive automatically |
+| Event logic | Works out today from the date. A day runs until 06:00, so a 03:00 set still counts as that night. Repeating events (weekly, monthly) make a dated copy each time; one date can be cancelled without touching the rest. Past events move to the archive automatically |
 | Open status | "Open now · until 03:00", "Opens today at 18:00" or "Closed today", including closing after midnight and one-day closures |
-| Editor (`/admin`) | Phone-first: add a night, change a price, mark sold out, close today, change hours, switch look. Every save says which touchpoints it reached |
-| Share kit | Post (4:5) and story (9:16) images drawn in the venue's look, plus captions per channel with tagged booking links (`?src=instagram`) |
-| Inbox | Booking requests from the site, with where they came from and a status |
+| Editor (`/admin`) | Phone-first: Today, Events, Menu, Inbox, Circle, Stats, More. Every save says which touchpoints it reached |
+| Share kit | Post (4:5) and story (9:16) images drawn in the venue's look and colour, captions in English and Spanish per channel (Instagram, Google, Facebook, WhatsApp) with tagged links (`?src=instagram`) so Stats knows what worked |
+| Inbox | Event bookings per date with arrived / no-show / cancelled, and table or hire requests, each tagged with where it came from |
 | Search data | Restaurant, opening hours, menu and upcoming events as schema.org JSON-LD |
 
 ## Run it locally
@@ -49,5 +58,7 @@ Hosted on Hostinger as a Node.js (Express) app, entry file `server.js`, Node 20.
 ## Not in this version
 
 - Automatic posting to Instagram, Google or Facebook (the share kit covers this without linking accounts)
+- Sending email to Circle members (download the list and use an email tool)
+- Online payment for bookings (pay on the day)
 - Multiple venues on one install (one install per venue for now)
 - A Spanish version of the public site (captions are bilingual)
