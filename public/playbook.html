@@ -87,6 +87,7 @@ header { padding: 18px 0 6px; }
 .badge { font-weight: 700; font-size: 11px; letter-spacing: .02em; padding: 3px 8px; border-radius: 6px; }
 .badge.v { background: var(--sea-soft); color: var(--sea); }
 .badge.ig { background: var(--gold-soft); color: var(--gold); }
+.badge.l { background: var(--pink-soft); color: var(--pink); }
 .save { border: 0; background: none; font-size: 20px; line-height: 1; padding: 2px; color: var(--muted); }
 .save[aria-pressed=true] { color: var(--pink); }
 .empty { background: var(--card); border: 1px dashed var(--line); border-radius: 16px; padding: 20px; text-align: center; }
@@ -146,7 +147,7 @@ header { padding: 18px 0 6px; }
     <span class="soon">MUY PRONTO</span>
     <div><h2>Qué hay esta noche, directo de los locales.</h2><p>Cena con DJ, música en directo, atardeceres y planes en familia, con la información de cada local al momento.</p></div>
     <div class="en"><h2>What's on tonight, straight from the venues.</h2><p>Food with a DJ, live music, sunsets and family plans, live from each venue's own information.</p></div>
-    <p class="venues">¿Tienes un local? / Run a venue? <a href="https://foodforthought.agency">Get listed</a></p>
+    <p class="venues">¿Tienes un local? <a href="/playbook/add">Sal en la guía gratis</a> · Run a venue? <a href="/playbook/add">Get listed free</a></p>
   </section>
 
   <header id="guideHead">
@@ -207,7 +208,7 @@ header { padding: 18px 0 6px; }
       <h3>Show up as Verified</h3>
       <p>Venues on the venue platform appear with their real line-up, menu by time of day, offers and a button to book or pre-order. You update it once on your phone; the Playbook, your site and Google stay in step.</p>
       <div class="actions"><a class="btn" id="platformLink" href="/?sample=restaurant">See the venue platform</a></div>
-      <p class="note">Listings from Instagram are read from your public posts and marked as such. Verified listings come first.</p>
+      <p class="note">Not on the platform yet? <a href="/playbook/add" style="color:var(--pink)">Send what's on for free</a> and it shows as Listed once we've checked it. Verified listings come first.</p>
     </div>
   </main>
 </div>
@@ -258,14 +259,15 @@ header { padding: 18px 0 6px; }
       var v = [];
       f.venues.forEach(function (ven) {
         ven.listings.forEach(function (l) {
-          v.push({ id: l.id, name: ven.name, area: ven.area, kind: ven.kind, day: l.date === f.today ? 0 : 1, start: l.start, end: l.end, tags: l.tags, src: 'v',
+          v.push({ id: l.id, name: ven.name, area: ven.area, kind: ven.kind, day: l.date === f.today ? 0 : 1, start: l.start, end: l.end, tags: l.tags, src: ven.listed ? 'l' : 'v',
             what: l.title + (l.what ? '. ' + l.what : ''), lineup: l.lineup, food: l.food, offer: l.offer, action: l.action, updated: 'live' });
         });
       });
       D = v.concat(IG);
       if (GUEST && holding(!v.length && !f.venues.length)) return;
       var src = f.sources || [], clients = src.slice(1), down = clients.filter(function (x) { return !x.ok; });
-      $('#feedNote').textContent = v.length + ' verified listings from ' + f.venues.length + (f.venues.length === 1 ? ' venue' : ' venues') +
+      var nv = v.filter(function (x) { return x.src === 'v'; }).length, nl = v.length - nv;
+      $('#feedNote').textContent = nv + ' verified' + (nl ? ' and ' + nl + ' listed' : '') + ' listings from ' + f.venues.length + (f.venues.length === 1 ? ' venue' : ' venues') +
         (clients.length ? ' (' + (clients.length - down.length) + ' of ' + clients.length + ' client sites answering)' : '') +
         ', refreshed ' + f.localTime + '.' + (down.length ? ' Not reachable right now: ' + down.map(function (x) { return x.host; }).join(', ') + '.' : '');
       render();
@@ -292,7 +294,7 @@ header { padding: 18px 0 6px; }
   function sortList(a, b) {
     var ao = a.day === 0 && a.start <= S.clock && a.end > S.clock, bo = b.day === 0 && b.start <= S.clock && b.end > S.clock;
     if (ao !== bo) return ao ? -1 : 1;
-    if (a.src !== b.src) return a.src === 'v' ? -1 : 1;
+    if (a.src !== b.src) { var rank = { v: 0, l: 1, ig: 2 }; return rank[a.src] - rank[b.src]; }
     return a.start - b.start;
   }
 
@@ -308,7 +310,7 @@ header { padding: 18px 0 6px; }
       '<div class="when">' + whenLabel(x) + '</div></div>' +
       '<p class="what">' + esc(x.what) + '</p>' +
       '<div class="tags">' + x.tags.map(function (t) { return '<span class="tag' + (S.tags.indexOf(t) >= 0 ? ' hit' : '') + '">' + TAGS[t] + '</span>'; }).join('') + '</div>' +
-      '<div class="src">' + (x.src === 'v' ? '<span class="badge v">VERIFIED</span>Live from ' + esc(x.name) + '’s own site' : '<span class="badge ig">FROM INSTAGRAM</span>' + esc(x.read)) +
+      '<div class="src">' + (x.src === 'v' ? '<span class="badge v">VERIFIED</span>Live from ' + esc(x.name) + '’s own site' : x.src === 'l' ? '<span class="badge l">LISTED</span>Sent in by ' + esc(x.name) : '<span class="badge ig">FROM INSTAGRAM</span>' + esc(x.read)) +
       '<span style="flex:1"></span><button type="button" class="save" data-save="' + x.id + '" aria-pressed="' + saved + '" aria-label="' + (saved ? 'Remove from saved' : 'Save') + '">' + (saved ? '♥' : '♡') + '</button></div>' +
       '</article>';
   }
@@ -384,7 +386,11 @@ header { padding: 18px 0 6px; }
     if (x.lineup) rows.push(['Line-up', x.lineup]);
     if (x.food) rows.push(['Food', x.food]);
     if (x.offer) rows.push(['Offer', x.offer]);
-    var body = x.src === 'v'
+    var listedBody = '<dl class="kv">' + rows.map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('') + '</dl>' +
+        '<div class="src"><span class="badge l">LISTED</span>Sent in by ' + esc(x.name) + ' and checked before it went up.</div>' +
+        '<div class="actions">' + (x.action ? '<a class="btn" href="' + esc(x.action.href) + '" rel="noopener" target="_blank">' + esc(x.action.label) + '</a>' : '') + '<a class="btn line" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(x.name + ' ' + x.area + ' Ibiza') + '">Directions</a></div>' +
+        '<p class="note">Times can change, so check with the venue before you go.</p>';
+    var body = x.src === 'l' ? listedBody : x.src === 'v'
       ? '<dl class="kv">' + rows.map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('') + '</dl>' +
         '<div class="src"><span class="badge v">VERIFIED</span>Live from ' + esc(x.name) + '’s own site on the venue platform. When they change it, this changes.</div>' +
         '<div class="actions"><a class="btn" href="' + x.action.href + '">' + esc(x.action.label) + '</a><a class="btn line" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(x.name + ' ' + x.area + ' Ibiza') + '">Directions</a></div>'

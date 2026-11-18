@@ -237,3 +237,49 @@ test('ibizaplaybook.com shows only the guest guide, never the sample venues', as
   assert.match(demo, /<html lang="en">/);
   assert.strictEqual((await (await fetch(base + '/api/playbook-guide.json')).json()).venues.length, 4);
 });
+
+test('a venue sends a free listing; it shows as Listed only after it is checked', async () => {
+  const feed0 = await (await fetch(base + '/api/playbook-guide.json')).json();
+  const today = feed0.today;
+  const bad = await fetch(base + '/playbook/add', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'venue=X' });
+  assert.strictEqual(bad.status, 400);
+  assert.match(await bad.text(), /Revisa los campos marcados/);
+  const body = new URLSearchParams({ venue: 'Bar Tardeo', area: 'Ibiza Town', kind: 'Bar', title: 'Tardeo con DJ', what: 'Paella y DJ', date: today, start: '17:00', end: '23:30', link: 'https://instagram.com/bartardeo', contact: 'hola@bartardeo.example' });
+  body.append('tags', 'dj'); body.append('tags', 'food');
+  const ok = await fetch(base + '/playbook/add', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+  assert.strictEqual(ok.status, 200);
+  assert.match(await ok.text(), /Gracias/);
+  const guestFeed = async () => (await fetch(base + '/api/playbook-guide.json', { headers: { 'x-forwarded-host': 'ibizaplaybook.com' } })).json();
+  assert.strictEqual((await guestFeed()).venues.length, 0, 'waiting listings never show');
+  // log in with the leads password, then show it
+  const login = await fetch(base + '/leads', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'password=leads-pass', redirect: 'manual' });
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const admin = await (await fetch(base + '/playbook/listed', { headers: { cookie } })).text();
+  assert.match(admin, /Bar Tardeo: Tardeo con DJ/);
+  assert.match(admin, /hola@bartardeo\.example/);
+  const id = admin.match(/\/playbook\/listed\/(\d+)/)[1];
+  const noAuth = await fetch(base + `/playbook/listed/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'status=live' });
+  assert.strictEqual(noAuth.status, 401);
+  await fetch(base + `/playbook/listed/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', cookie }, body: 'status=live', redirect: 'manual' });
+  const g = await guestFeed();
+  assert.strictEqual(g.venues.length, 1);
+  const v = g.venues[0];
+  assert.ok(v.listed);
+  assert.strictEqual(JSON.stringify(v).includes('hola@'), false, 'contact is never published');
+  assert.deepStrictEqual(v.listings[0].tags.sort(), ['dj', 'food']);
+  // the demo guide shows it after the four verified sample venues
+  const demo = await (await fetch(base + '/api/playbook-guide.json')).json();
+  assert.strictEqual(demo.venues.length, 5);
+  assert.strictEqual(demo.venues.at(-1).name, 'Bar Tardeo');
+  const form = await fetch(base + '/playbook/add', { headers: { 'x-forwarded-host': 'ibizaplaybook.com' }, redirect: 'manual' });
+  assert.strictEqual(form.status, 200);
+});
+
+test('weekly Listed entries run on the same weekday for eight weeks', () => {
+  const { runsOn } = require('../lib/listed');
+  const l = { weekly: true, date: '2026-11-21' };
+  assert.ok(runsOn(l, '2026-11-28'));
+  assert.ok(!runsOn(l, '2026-11-27'));
+  assert.ok(!runsOn(l, '2027-01-16'));
+  assert.ok(runsOn({ weekly: false, date: '2026-11-21' }, '2026-11-21'));
+});

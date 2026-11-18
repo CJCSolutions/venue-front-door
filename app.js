@@ -10,9 +10,10 @@ const { SAMPLES, overlay } = require('./lib/samples');
 const { applyAction, ActionError, LOOKS } = require('./lib/actions');
 const { buildStats } = require('./lib/stats');
 const { preordersNow, remaining, prepList, MODES } = require('./lib/orders');
-const { localNow, addDays } = require('./lib/time');
+const { localNow, addDays, serviceDate } = require('./lib/time');
 const render = require('./lib/render');
 const { buildFeed, guideFeed, isGuestHost } = require('./lib/playbook');
+const listed = require('./lib/listed');
 const pitch = require('./lib/pitch');
 const LEADS_PASSWORD = process.env.LEADS_PASSWORD || '';
 
@@ -138,7 +139,7 @@ function countVisit(req) {
 // ---------- the guest Playbook address (ibizaplaybook.com) ----------
 // That address shows only the guide. Everything else on it goes to the venue
 // platform's own address, so guests never land on a sample venue page.
-const GUEST_PATHS = new Set(['/', '/playbook', '/api/playbook-guide.json', '/api/playbook.json', '/healthz']);
+const GUEST_PATHS = new Set(['/', '/playbook', '/playbook/add', '/api/playbook-guide.json', '/api/playbook.json', '/healthz']);
 function playbookPage(guest) {
   const html = require('fs').readFileSync(path.join(__dirname, 'public', 'playbook.html'), 'utf8');
   return guest ? html.replace('<html lang="en">', '<html lang="es" data-guest>') : html;
@@ -404,7 +405,34 @@ app.get('/api/playbook-guide.json', page(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const own = await ownFeed(req);
   const guest = req.guest || req.query.guest === '1';
-  res.json(await guideFeed({ own: guest && DEMO ? { ...own, venues: [] } : own, ownBase: baseUrl(req) }));
+  const extra = listed.toVenues(await store.listListed(), own.today);
+  res.json(await guideFeed({ own: guest && DEMO ? { ...own, venues: [] } : own, ownBase: baseUrl(req), listed: extra }));
+}));
+
+// The free Listed tier: venues send what's on, Christopher checks it, then it shows.
+const todayHere = () => serviceDate(localNow('Europe/Madrid'));
+app.get('/playbook/add', (req, res) => { res.set('Cache-Control', 'no-store').send(listed.formPage({ today: todayHere() })); });
+app.post('/playbook/add', form, page(async (req, res) => {
+  const b = req.body || {};
+  if (b.website) return res.send(listed.thanksPage()); // filled by bots only
+  if (limited('listed:' + req.ip, 6, 60 * 60 * 1000)) return res.status(429).send(listed.formPage({ today: todayHere(), values: b, errors: [] }).replace('<form', '<div class="box"><b>Demasiados envíos. Prueba en una hora. / Too many sends. Try again in an hour.</b></div><form'));
+  const { values, errors } = listed.validate(b, todayHere());
+  if (errors.length) return res.status(400).send(listed.formPage({ today: todayHere(), values, errors }));
+  await store.addListed(values);
+  console.log(JSON.stringify({ level: 'INFO', message: `New Playbook listing waiting: ${values.venue} (${values.title})`, timestamp: new Date().toISOString() }));
+  res.send(listed.thanksPage());
+}));
+app.get('/playbook/listed', page(async (req, res) => {
+  res.set('X-Robots-Tag', 'noindex').set('Cache-Control', 'no-store');
+  const allowed = leadsAllowed(req);
+  res.send(listed.adminPage({ allowed, rows: allowed ? await store.listListed() : [] }));
+}));
+app.post('/playbook/listed/:id', form, page(async (req, res) => {
+  if (!leadsAllowed(req)) return res.status(401).send(listed.adminPage({ allowed: false }));
+  const status = String((req.body || {}).status);
+  if (!['live', 'hidden', 'deleted'].includes(status)) return res.status(400).send('Unknown status');
+  await store.setListedStatus(Number(req.params.id), status);
+  res.redirect(303, '/playbook/listed');
 }));
 app.get('/playbook', (req, res) => { res.set('Cache-Control', 'no-store').type('html').send(playbookPage(req.guest || req.query.guest === '1')); });
 
