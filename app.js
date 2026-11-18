@@ -10,11 +10,13 @@ const { SAMPLES, overlay } = require('./lib/samples');
 const { applyAction, ActionError, LOOKS } = require('./lib/actions');
 const { buildStats } = require('./lib/stats');
 const { preordersNow, remaining, prepList, MODES } = require('./lib/orders');
-const { localNow, addDays, serviceDate } = require('./lib/time');
+const { localNow, addDays, serviceDate, formatDate } = require('./lib/time');
 const render = require('./lib/render');
 const { buildFeed, guideFeed, isGuestHost } = require('./lib/playbook');
 const listed = require('./lib/listed');
 const pitch = require('./lib/pitch');
+const R = require('./lib/reservations');
+const notify = require('./lib/notify');
 const LEADS_PASSWORD = process.env.LEADS_PASSWORD || '';
 
 const PORT = process.env.PORT || 3000;
@@ -177,9 +179,91 @@ app.get('/menu', page(async (req, res) => {
   if (!ctx.state.venue.modules.menu) return res.status(404).send(render.notFoundPage(ctx));
   res.send(render.menuPage(ctx));
 }));
+// Table bookings: the dates with space, and the times left on the chosen one.
+async function tableCtx(state, wanted) {
+  if (!R.tablesOn(state)) return null;
+  const settings = R.tableSettings(state);
+  const dates = R.bookableDates(state);
+  const date = dates.includes(wanted) ? wanted : dates[0] || null;
+  const times = date ? R.timesFor(state, date, await store.reservationsTaken(date)) : [];
+  return { settings, dates, date, times };
+}
+
 app.get('/book', page(async (req, res) => {
   countVisit(req);
-  res.send(render.bookPage(await context(req, { res }), { values: { src: cleanSrc(req.query.src), type: ['table', 'private', 'other'].includes(req.query.type) ? req.query.type : '' } }));
+  const ctx = await context(req, { res });
+  const table = await tableCtx(ctx.state, req.query.date);
+  res.send(render.bookPage(ctx, { table, values: { src: cleanSrc(req.query.src), type: ['table', 'private', 'other'].includes(req.query.type) ? req.query.type : '' }, tableValues: { src: cleanSrc(req.query.src), guests: parseInt(req.query.guests, 10) || 2 } }));
+}));
+
+app.post('/book/table', express.urlencoded({ extended: false, limit: '20kb' }), page(async (req, res) => {
+  const ctx = await context(req, { res });
+  const b = req.body || {};
+  const tv = {
+    date: String(b.date || ''), time: String(b.time || ''), guests: parseInt(b.guests, 10) || 0,
+    name: String(b.name || '').trim().slice(0, 80), contact: String(b.contact || '').trim().slice(0, 120),
+    note: String(b.note || '').trim().slice(0, 300), src: cleanSrc(b.src)
+  };
+  const table = await tableCtx(ctx.state, tv.date);
+  const again = async (status, error, fresh) => res.status(status).send(render.bookPage(ctx, { table: fresh || table, tableValues: tv, tableError: error }));
+  if (!table) return res.status(404).send(render.notFoundPage(ctx));
+  if (b.website) return res.send(render.bookPage(ctx, { table, tableSent: { status: 'pending', ...tv } }));
+  if (limited('table:' + req.ip, 6, 10 * 60 * 1000)) return again(429, 'Too many bookings. Please try again in a few minutes.');
+  if (table.date !== tv.date) return again(400, 'That day is not available. Pick another day.');
+  const slot = table.times.find((t) => t.time === tv.time);
+  if (!slot) return again(400, 'Pick a time.');
+  if (!(tv.guests >= 1 && tv.guests <= table.settings.maxParty)) return again(400, `Bookings are for 1 to ${table.settings.maxParty} guests. For a bigger group, send a request below.`);
+  if (!tv.name || !tv.contact) return again(400, 'Please add your name and a phone number or email.');
+  const status = table.settings.mode === 'manual' ? 'pending' : 'confirmed';
+  const result = await store.addReservation({ date: tv.date, time: tv.time, guests: tv.guests, name: tv.name, contact: tv.contact, note: tv.note, status, source: tv.src || (ctx.member ? 'circle' : 'direct') }, table.settings.covers);
+  if (result.full) return again(409, result.left ? `Only ${result.left} ${result.left > 1 ? 'places' : 'place'} left at ${tv.time}. Try fewer guests or another time.` : `${tv.time} just filled up. Pick another time.`, await tableCtx(ctx.state, tv.date));
+  const when = `${formatDate(tv.date)} at ${tv.time}`;
+  notify.venueAlert(ctx.state, status === 'pending' ? `Booking to confirm: ${tv.guests} at ${tv.time}` : `New booking: ${tv.guests} at ${tv.time}`,
+    [`${tv.name}, ${tv.guests} ${tv.guests > 1 ? 'guests' : 'guest'}, ${when}.`, `Contact: ${tv.contact}`, tv.note && `Note: ${tv.note}`, status === 'pending' ? 'Confirm or decline it in the editor.' : 'Confirmed automatically.'],
+    { replyTo: tv.contact, base: baseUrl(req) });
+  if (status === 'confirmed') notify.guestEmail(ctx.state, tv.contact, 'your table is booked', [`Hi ${tv.name},`, '', `Your table for ${tv.guests} is booked for ${when}.`, 'Need to change it? Just reply to this email.']);
+  res.send(render.bookPage(ctx, { table: await tableCtx(ctx.state, tv.date), tableSent: { status, ...tv } }));
+}));
+
+// Order ahead to collect today, from the live menu. Paid on collection.
+function collectCtx(state) {
+  const slots = R.collectSlots(state);
+  return { settings: R.collectSettings(state), slots, menus: R.collectMenu(state, new Date(), slots) };
+}
+
+app.get('/collect', page(async (req, res) => {
+  countVisit(req);
+  const ctx = await context(req, { res });
+  if (!ctx.state.venue.modules.collect) return res.status(404).send(render.notFoundPage(ctx));
+  res.send(render.collectPage(ctx, collectCtx(ctx.state), { values: { src: cleanSrc(req.query.src) } }));
+}));
+
+app.post('/collect', express.urlencoded({ extended: false, limit: '40kb' }), page(async (req, res) => {
+  const ctx = await context(req, { res });
+  if (!ctx.state.venue.modules.collect) return res.status(404).send(render.notFoundPage(ctx));
+  const c = collectCtx(ctx.state);
+  const b = req.body || {};
+  const all = c.menus.flatMap((m) => m.sections.flatMap((s) => s.items));
+  const qty = {};
+  for (const it of all) { const n = parseInt(b['qty_' + it.id], 10); if (n > 0) qty[it.id] = Math.min(n, 30); }
+  const values = { name: String(b.name || '').trim().slice(0, 80), contact: String(b.contact || '').trim().slice(0, 120), note: String(b.note || '').trim().slice(0, 300), slot: String(b.slot || ''), qty, src: cleanSrc(b.src) };
+  const again = (status, error) => res.status(status).send(render.collectPage(ctx, c, { error, values }));
+  if (b.website) return res.send(render.collectPage(ctx, c, { sent: { name: values.name, items: [], total: 0, slot: values.slot } }));
+  if (!c.slots.length) return again(400, 'We are not taking orders right now.');
+  if (limited('collect:' + req.ip, 8, 10 * 60 * 1000)) return again(429, 'Too many orders. Please try again in a few minutes.');
+  const items = all.filter((it) => qty[it.id]).map((it) => ({ id: it.id, name: it.name, qty: qty[it.id], price: it.price }));
+  if (!items.length) return again(400, 'Add at least one dish.');
+  if (!c.slots.includes(values.slot)) return again(400, 'Pick a pickup time.');
+  const notThen = c.menus.find((m) => !R.serves(m, values.slot) && m.sections.some((sec) => sec.items.some((it) => qty[it.id])));
+  if (notThen) return again(400, `${notThen.name} is served ${notThen.from} to ${notThen.to}. Pick a pickup time then, or choose from another menu.`);
+  if (!values.name || !values.contact) return again(400, 'Please add your name and a phone number or email.');
+  const total = Math.round(items.reduce((t, i) => t + i.qty * i.price, 0) * 100) / 100;
+  const date = localNow(ctx.state.venue.timezone).date;
+  await store.addOrder({ preorder_id: 'collect', preorder_name: 'Order ahead', date, slot: values.slot, mode: 'collect', name: values.name, contact: values.contact, items, total, note: values.note, source: values.src || (ctx.member ? 'circle' : 'direct') }, {});
+  notify.venueAlert(ctx.state, `New order for ${values.slot}: ${values.name}`,
+    [`Pickup today at ${values.slot}.`, ...items.map((i) => `${i.qty} x ${i.name}`), `Total €${total.toFixed(2)}, paid on collection.`, `Contact: ${values.contact}`, values.note && `Note: ${values.note}`],
+    { replyTo: values.contact, base: baseUrl(req) });
+  res.send(render.collectPage(ctx, c, { sent: { name: values.name, items, total, slot: values.slot } }));
 }));
 // Pre-orders: weekend bakes, a Sunday roast. One page per pre-order.
 app.get('/order', page(async (req, res) => {
@@ -237,6 +321,7 @@ app.post('/event/:key', form, page(async (req, res) => {
   }, o.capacity);
   if (result.full) return again(409, result.left ? `Only ${result.left} ${result.left > 1 ? 'places' : 'place'} left.` : 'Sorry, that just filled up.');
   ctx.counts = await store.bookedCounts();
+  notify.venueAlert(ctx.state, `New booking: ${values.guests} for ${o.name}`, [`${values.name}, ${values.guests} for ${o.name} on ${formatDate(o.date)}.`, `Contact: ${values.contact}`], { replyTo: values.contact, base: baseUrl(req) });
   res.send(render.eventPage(ctx, o, { sent: { name: values.name, guests: values.guests } }));
 }));
 
@@ -269,11 +354,15 @@ app.post('/order/:id', form, page(async (req, res) => {
     const fresh = remaining(po, await store.takenFor(po.id, chosen.date));
     return res.status(409).send(render.orderPage(ctx, po, chosen, fresh, { error: result.short.left ? `Only ${result.short.left} ${result.short.name} left for that day.` : `${result.short.name} has sold out for that day.`, values }));
   }
+  notify.venueAlert(ctx.state, `New pre-order: ${po.name}, ${values.name}`,
+    [`${formatDate(chosen.date)} at ${values.slot}, ${MODES[values.mode].toLowerCase()}.`, ...items.map((i) => `${i.qty} x ${i.name}`), `Total €${total.toFixed(2)}, paid on the day.`, `Contact: ${values.contact}`, values.note && `Note: ${values.note}`],
+    { replyTo: values.contact, base: baseUrl(req) });
   res.send(render.orderPage(ctx, po, chosen, left, { sent: { name: values.name, items, total, slot: values.slot, mode: values.mode, date: chosen.date } }));
 }));
 
 app.post('/book', form, page(async (req, res) => {
   const ctx = await context(req, { res });
+  const table = await tableCtx(ctx.state);
   const b = req.body || {};
   const values = {
     type: ['table', 'private', 'other'].includes(b.type) ? b.type : 'table',
@@ -288,7 +377,10 @@ app.post('/book', form, page(async (req, res) => {
   if (limited('book:' + req.ip, 5, 10 * 60 * 1000)) return res.status(429).send(render.bookPage(ctx, { error: 'Too many requests. Please try again in a few minutes.', values }));
   if (!values.name || !values.contact) return res.status(400).send(render.bookPage(ctx, { error: 'Please add your name and a phone number or email.', values }));
   await store.addEnquiry({ name: values.name, contact: values.contact, date: values.date || null, guests: values.guests || null, type: values.type, message: values.message, source: values.src || 'direct' });
-  res.send(render.bookPage(ctx, { sent: true }));
+  notify.venueAlert(ctx.state, `New request: ${({ table: 'group', private: 'private hire', other: 'enquiry' })[values.type]} from ${values.name}`,
+    [values.date && `Date: ${formatDate(values.date)}`, values.guests && `Guests: ${values.guests}`, `Contact: ${values.contact}`, values.message && `Message: ${values.message}`],
+    { replyTo: values.contact, base: baseUrl(req) });
+  res.send(render.bookPage(ctx, { sent: true, table: await tableCtx(ctx.state) }));
 }));
 
 // ---------- sales page and leads ----------
@@ -461,14 +553,17 @@ app.get('/api/admin/state', requireAdmin, page(async (req, res) => {
   let [{ data, version }, changes, enquiries, bookings, members, orders] = await Promise.all([
     store.getState(), store.listChanges(10), store.listEnquiries(100), store.listBookings(500), store.listMembers(1000), store.listOrders(300)
   ]);
+  const localToday = localNow(data.venue.timezone).date;
+  const reservations = await store.listReservations(addDays(localToday, -1));
   const schedule = buildSchedule(data, new Date(), { editor: true });
-  const poIds = (data.preorders || []).map((x) => x.id);
+  const poIds = (data.preorders || []).map((x) => x.id).concat('collect');
   orders = orders.filter((o) => poIds.includes(o.preorder_id));
   const views = await store.listViews(addDays(schedule.today, -30));
   const counts = await store.bookedCounts();
   res.json({
     state: data, version, schedule, status: openStatus(data), menus: menusNow(data), labels: labels(data),
-    changes, enquiries, bookings, members, counts, orders, prep: prepList(orders, schedule.today), preorders: preordersNow(data),
+    changes, enquiries, bookings, members, counts, orders, prep: prepList(orders.filter((o) => o.preorder_id !== 'collect'), schedule.today), preorders: preordersNow(data),
+    reservations, localToday, tables: R.tableSettings(data), tablesOn: R.tablesOn(data), collect: R.collectSettings(data), alerts: { to: notify.alertAddress(data), mailbox: notify.configured() },
     stats: buildStats({ state: data, schedule, bookings, members, views, enquiries, orders }),
     baseUrl: baseUrl(req), demo: DEMO, offers: offersNow(data),
     catalog: { modules: MODULES, sections: SECTIONS, presets: PRESETS }
@@ -513,6 +608,42 @@ app.patch('/api/admin/bookings/:id', requireAdmin, express.json({ limit: '4kb' }
   if (!['confirmed', 'arrived', 'cancelled', 'no-show'].includes(status)) return res.status(400).json({ error: 'Unknown status' });
   await store.setBookingStatus(Number(req.params.id), status);
   res.json({ ok: true });
+}));
+
+// What's waiting, checked by the open editor every 20 seconds so it can ring.
+app.get('/api/admin/pulse', requireAdmin, page(async (req, res) => {
+  const { data } = await store.getState();
+  const today = localNow(data.venue.timezone).date;
+  const [enquiries, orders, reservations] = await Promise.all([store.listEnquiries(100), store.listOrders(300), store.listReservations(today)]);
+  const poIds = (data.preorders || []).map((x) => x.id).concat('collect');
+  const waiting = enquiries.filter((e) => e.status === 'new').length +
+    orders.filter((o) => o.status === 'new' && o.date >= today && poIds.includes(o.preorder_id)).length +
+    reservations.filter((r) => r.status === 'pending').length;
+  const newest = Math.max(0, ...enquiries.map((e) => e.id)) + '-' + Math.max(0, ...orders.map((o) => o.id)) + '-' + Math.max(0, ...reservations.map((r) => r.id));
+  res.set('Cache-Control', 'no-store').json({ waiting, newest });
+}));
+
+app.patch('/api/admin/reservations/:id', requireAdmin, express.json({ limit: '4kb' }), page(async (req, res) => {
+  const status = (req.body || {}).status;
+  if (!R.RES_STATUSES.includes(status)) return res.status(400).json({ error: 'Unknown status' });
+  const r = await store.getReservation(Number(req.params.id));
+  if (!r) return res.status(404).json({ error: 'Booking not found' });
+  const { data } = await store.getState();
+  // Confirming a declined or cancelled booking takes a place again: check there is one.
+  if (R.HOLDS.includes(status) && !R.HOLDS.includes(r.status)) {
+    const taken = (await store.reservationsTaken(r.date))[r.time] || 0;
+    if (taken + r.guests > R.tableSettings(data).covers) return res.status(409).json({ error: `${r.time} is full now. Move the guest to another time first.` });
+  }
+  await store.setReservationStatus(r.id, status);
+  const when = `${formatDate(r.date)} at ${r.time}`;
+  const v = data.venue.name;
+  const words = {
+    confirmed: [`your table is confirmed`, `Hi ${r.name}, your table for ${r.guests} at ${v} is confirmed for ${when}. See you then!`],
+    declined: [`about your booking`, `Hi ${r.name}, sorry, we can't take your booking for ${r.guests} at ${v} on ${when}. Reply and we'll find another time.`],
+    cancelled: [`your booking is cancelled`, `Hi ${r.name}, your booking for ${r.guests} at ${v} on ${when} is cancelled.`]
+  }[status];
+  if (words && r.status !== status) notify.guestEmail(data, r.contact, words[0], [words[1]]);
+  res.json({ ok: true, whatsapp: words ? R.whatsappLink(r.contact, words[1]) : null, emailed: Boolean(words && R.looksLikeEmail(r.contact) && notify.configured() && !DEMO) });
 }));
 
 app.patch('/api/admin/orders/:id', requireAdmin, express.json({ limit: '4kb' }), page(async (req, res) => {

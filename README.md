@@ -9,7 +9,7 @@ It solves five problems in one system: menus that update in seconds, events post
 It is built from **modules**, bundled into **use cases**, and dressed in a **style**:
 
 - **Core modules, always on:** hours and open-now status, directions and contact.
-- **Optional modules:** About, Gallery, Good to know (parking, accessibility, dogs, wifi, kids, payment, dress code), Menus, Offers (happy hour, set lunch), Events, Event bookings, Table requests, Private hire, Order online (delivery, takeaway, vouchers), Stories, the Circle, Reviews.
+- **Optional modules:** About, Gallery, Good to know (parking, accessibility, dogs, wifi, kids, payment, dress code), Menus, Offers (happy hour, set lunch), Events, Event bookings, Table bookings, Private hire, Order ahead to collect, Delivery and voucher links, Stories, the Circle, Reviews.
 - **Use cases:** Café, Restaurant with theme nights, Bar that hosts events, Beach club or day venue. Each switches on a set of modules and orders the home page; the venue can then turn any module on or off and reorder the home page.
 - **Styles:** Poster wall, Gallery, Beach club, After dark, plus a brand colour. Any use case can wear any style.
 
@@ -22,6 +22,9 @@ The design and page structure are fixed. The venue only edits facts, so it can't
 | Public site | Home (today or next up, stories, what's being served now), What's on with an archive, menus with diet filters, a page per event with booking, table and private-hire requests, the Circle |
 | Menu builder | As many menus as needed (breakfast, lunch, dinner, late, drinks), each with its own times and days. The site shows what is being served now and switches by itself, including menus that run past midnight. Sections, dishes, prices, diet tags, sold out, reordering |
 | Pre-orders | Order ahead for set days: a café's weekend bakes to collect, a restaurant's Sunday roast to eat in or take away. Each pre-order has its days, a time window cut into slots, a cut-off ("order by Saturday 20:00"), and items with prices and a most-per-day limit, checked so the kitchen never takes more than it can make. The editor shows a kitchen list (how many of each item per date), the orders by time with ready / collected / cancelled, and where orders came from |
+| Table bookings | The venue sets its booking times, guests per time, biggest party, notice and days ahead. Guests pick a day, a time and a party size; covers are checked so a time can't be overbooked. Confirmed automatically while there is space, or the venue confirms each one. Confirm or decline in one tap; the guest gets an email, or a WhatsApp message written and ready to send. A venue's own booking system link replaces this |
+| Order ahead | Guests order from the menus still serving today and pick a pickup time; sold out dishes are hidden. Paid on collection. Orders land in the Inbox with new / ready / collected and a WhatsApp "ready" message |
+| Alerts | Every new table booking, request, event booking and order is emailed to the venue (alert email in the editor, or the venue email). The open editor checks every 20 seconds, rings and shows a count |
 | Event bookings | Any event can take bookings with a number of places and a price per guest (paid on the day). Capacity is checked so the last place can't be sold twice |
 | Stories | Grouped in themes, like highlights (Tonight, From the kitchen, Last weekend). A theme shows a fresh ring when something new is posted. Stories linked to an event also stay on its page. Can be Circle-only, and shared to Instagram from the editor |
 | The Circle | The venue's own audience list. Guests join with name, email and consent; members see new events (Circle-first, 24 or 48 hours early) and Circle-only stories. Members download as CSV |
@@ -62,6 +65,8 @@ Without `DB_NAME` it stores data in `data/local.json`.
 | `PUBLIC_URL` | Full site address used in links and search data, e.g. `https://venue.foodforthought.agency` |
 | `NODE_ENV` | `production` marks the login cookie as secure |
 | `LEADS_PASSWORD` | Opens `/leads`, the list of enquiries from the sales page |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | The mailbox that sends alerts and guest emails (Hostinger: `smtp.hostinger.com`, port 465). Without them nothing is emailed; the editor still rings |
+| `ALERT_EMAIL` | Fallback alert address. In demo mode it is the only one used, and guests are never emailed |
 
 Tables are created on first start.
 
@@ -73,6 +78,7 @@ Hosted on Hostinger as a Node.js (Express) app, entry file `server.js`, Node 20.
 
 - Automatic posting to Instagram, Google or Facebook (the share kit covers this without linking accounts)
 - Sending email to Circle members (download the list and use an email tool)
-- Online payment for bookings (pay on the day)
+- Online payment or deposits (pay at the venue)
+- Delivery, ordering at the table by QR, a till or kitchen printer link
 - Multiple venues on one install (one install per venue for now)
 - A Spanish version of the public site (captions are bilingual)

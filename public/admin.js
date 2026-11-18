@@ -47,11 +47,12 @@
       document.getElementById('title').textContent = j.state.venue.name;
       if (!S.menuId || !j.state.menus.some(function (m) { return m.id === S.menuId; })) S.menuId = j.state.menus[0] ? j.state.menus[0].id : null;
       var Mo = j.state.venue.modules;
-      var vis = { events: Mo.events, menu: Mo.menu || Mo.offers || Mo.preorder, inbox: Mo.tables || Mo.hire || Mo.bookings || Mo.preorder, circle: Mo.circle };
+      var vis = { events: Mo.events, menu: Mo.menu || Mo.offers || Mo.preorder, inbox: Mo.tables || Mo.hire || Mo.bookings || Mo.preorder || Mo.collect, circle: Mo.circle };
       Object.keys(vis).forEach(function (k) { tabs.querySelector('[data-tab="' + k + '"]').classList.toggle('hidden', !vis[k]); });
       if (vis[S.tab] === false) S.tab = 'today';
-      var waiting = j.enquiries.filter(function (e) { return e.status === 'new'; }).length + (Mo.preorder ? j.orders.filter(function (o) { return o.status === 'new' && o.date >= j.schedule.today; }).length : 0);
-      if (S.inbox === 'bookings' && !Mo.bookings && Mo.preorder) S.inbox = 'orders';
+      var waiting = j.enquiries.filter(function (e) { return e.status === 'new'; }).length + j.orders.filter(function (o) { return o.status === 'new' && o.date >= j.localToday; }).length + j.reservations.filter(function (r) { return r.status === 'pending'; }).length;
+      if (!S.inboxSet) { S.inbox = j.tablesOn ? 'tables' : Mo.bookings ? 'bookings' : (Mo.preorder || Mo.collect) ? 'orders' : 'requests'; S.inboxSet = true; }
+      document.title = (waiting ? '(' + waiting + ') ' : '') + j.state.venue.name + ' · Editor';
       var btn = tabs.querySelector('[data-tab="inbox"]'), badge = btn.querySelector('.badge');
       if (waiting) { if (!badge) { badge = document.createElement('i'); badge.className = 'badge'; btn.appendChild(badge); } badge.textContent = waiting; }
       else if (badge) badge.remove();
@@ -79,7 +80,7 @@
       $('#loginForm').addEventListener('submit', function (e) {
         e.preventDefault();
         api('/api/login', { method: 'POST', body: { password: e.target.password.value } })
-          .then(function () { tabs.classList.remove('hidden'); return load(); })
+          .then(function () { tabs.classList.remove('hidden'); return load().then(startPulse); })
           .catch(function (err) { $('#loginErr').innerHTML = '<div class="err">' + esc(err.message) + '</div>'; });
       });
     });
@@ -120,6 +121,7 @@
         return '<div style="margin-top:12px"><b style="font-size:20px">' + esc(o.name) + '</b><div class="muted">From ' + esc(o.doors || '–') + (bookedLine(o) ? ' · ' + bookedLine(o) : '') + '</div>' +
           '<div class="btnrow"><button class="btn small dark" data-share="' + esc(o.key) + '">Share ↗</button><button class="btn small" data-results="' + esc(o.key) + '">Bookings & results</button><button class="btn small" data-edit-event="' + esc(o.eventId) + '">Edit</button></div></div>';
       }).join('') : '<p style="margin:10px 0 0">Nothing on today. The site leads with the next ' + esc(L().event.toLowerCase()) + ' and what is on the menu.</p>') + '</div>';
+    html += todayList();
     html += '<div class="quick">' +
       (v.modules.events ? '<button class="dark" data-go="newevent"><span>＋</span><span>Add ' + esc(L().event.toLowerCase()) + '</span></button>' : '') +
       (v.modules.offers ? '<button data-go="newoffer"><span>%</span><span>Add an offer</span></button>' : '') +
@@ -202,11 +204,15 @@
   function viewInbox() {
     var j = S.data;
     var Mo = V().modules;
-    var html = '<h2>Inbox</h2><div class="chips">' +
+    var pend = j.reservations.filter(function (r) { return r.status === 'pending'; }).length;
+    var html = '<h2>Inbox</h2>' + alertsLine() + '<div class="chips">' +
+      (j.tablesOn ? '<button data-inbox="tables" class="' + (S.inbox === 'tables' ? 'on' : '') + '">Tables' + (pend ? ' (' + pend + ' to confirm)' : '') + '</button>' : '') +
       (Mo.bookings ? '<button data-inbox="bookings" class="' + (S.inbox === 'bookings' ? 'on' : '') + '">Event bookings</button>' : '') +
-      (Mo.preorder ? '<button data-inbox="orders" class="' + (S.inbox === 'orders' ? 'on' : '') + '">Pre-orders</button>' : '') +
-      '<button data-inbox="requests" class="' + (S.inbox === 'requests' ? 'on' : '') + '">Table & hire requests</button></div>';
-    if (S.inbox === 'orders') {
+      (Mo.preorder || Mo.collect ? '<button data-inbox="orders" class="' + (S.inbox === 'orders' ? 'on' : '') + '">Orders</button>' : '') +
+      '<button data-inbox="requests" class="' + (S.inbox === 'requests' ? 'on' : '') + '">' + (j.tablesOn ? 'Requests' : 'Table & hire requests') + '</button></div>';
+    if (S.inbox === 'tables') {
+      html += tablesInbox();
+    } else if (S.inbox === 'orders') {
       html += ordersInbox();
     } else if (S.inbox === 'bookings') {
       var upcoming = allUpcoming().filter(function (o) { return o.bookable; });
@@ -225,6 +231,54 @@
       }).join('') : '<div class="card">No requests yet.</div>';
     }
     view.innerHTML = html;
+  }
+
+  function contactLinks(c) {
+    var mail = c.indexOf('@') > 0;
+    return '<a href="' + (mail ? 'mailto:' : 'tel:') + esc(c.replace(/\s/g, '')) + '">' + esc(c) + '</a>';
+  }
+  function waLink(c, msg) {
+    var digits = String(c || '').replace(/[^\d+]/g, '');
+    if (c.indexOf('@') > 0 || digits.replace('+', '').length < 8) return '';
+    var n = digits.charAt(0) === '+' ? digits.slice(1) : digits.indexOf('00') === 0 ? digits.slice(2) : digits.length === 9 ? '34' + digits : digits;
+    return 'https://wa.me/' + n + '?text=' + encodeURIComponent(msg);
+  }
+  function resRow(r, withDate) {
+    var v = V().name, when = shortDate(r.date) + ' at ' + r.time;
+    var wa = waLink(r.contact, 'Hi ' + r.name + ', about your table for ' + r.guests + ' at ' + v + ' on ' + when + ': ');
+    var pill = { pending: 'warn', confirmed: 'ok', arrived: 'ok', declined: 'bad', cancelled: 'plain', 'no-show': 'bad' }[r.status] || 'plain';
+    return '<div class="row" style="align-items:flex-start"><div class="grow"><b>' + esc(r.time) + ' · ' + esc(r.name) + ' · ' + esc(r.guests) + '</b>' + (r.status === 'pending' ? ' <span class="pill ' + pill + '">to confirm</span>' : '') +
+      (withDate ? '<div class="muted">' + esc(shortDate(r.date)) + '</div>' : '') +
+      '<div class="muted">' + contactLinks(r.contact) + (wa ? ' · <a href="' + esc(wa) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') + ' · ' + esc(r.source || 'direct') + '</div>' +
+      (r.note ? '<div class="muted">“' + esc(r.note) + '”</div>' : '') +
+      (r.status === 'pending' ? '<div class="btnrow"><button class="btn small dark" data-res="' + r.id + '" data-status="confirmed">Confirm</button><button class="btn small" data-res="' + r.id + '" data-status="declined">Decline</button></div>' : '') + '</div>' +
+      (r.status !== 'pending' ? '<select data-res-sel="' + r.id + '" aria-label="Booking status">' + ['confirmed', 'arrived', 'no-show', 'cancelled', 'declined'].map(function (s) { return '<option ' + (r.status === s ? 'selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '') + '</div>';
+  }
+  function tablesInbox() {
+    var j = S.data, t = j.tables;
+    var list = j.reservations.filter(function (r) { return r.date >= j.localToday; });
+    var head = '<p class="muted">' + t.times.length + ' booking times, ' + t.covers + ' guests each, up to ' + t.maxParty + ' per table. ' + (t.mode === 'auto' ? 'Confirmed automatically while there is space.' : 'You confirm each booking.') + ' <a href="#" data-content="tables">Change</a></p>';
+    if (!list.length) return head + '<div class="card">No table bookings coming up. Share your booking link: <b>' + esc(j.baseUrl) + '/book</b></div>';
+    var by = {};
+    list.forEach(function (r) { (by[r.date] = by[r.date] || []).push(r); });
+    return head + Object.keys(by).sort().map(function (date) {
+      var rows = by[date], guests = rows.filter(function (r) { return ['pending', 'confirmed', 'arrived'].indexOf(r.status) >= 0; }).reduce(function (a, r) { return a + r.guests; }, 0);
+      return '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>' + esc(date === j.localToday ? 'Today' : shortDate(date)) + '</b><span class="pill plain">' + guests + ' guests</span></div>' + rows.map(function (r) { return resRow(r, false); }).join('') + '</div>';
+    }).join('');
+  }
+  function alertsLine() {
+    var a = S.data.alerts;
+    if (!a.to) return '<p class="muted">Email alerts are off: add an email in <a href="#" data-content="alerts">Alerts</a>. This page rings while it is open.</p>';
+    return '<p class="muted">New bookings and orders ' + (a.mailbox ? 'are emailed to <b>' + esc(a.to) + '</b>' : 'will be emailed to <b>' + esc(a.to) + '</b> once the mailbox is set up') + '. This page also rings while it is open. <a href="#" data-content="alerts">Change</a></p>';
+  }
+  function todayList() {
+    var j = S.data, today = j.localToday;
+    var res = j.reservations.filter(function (r) { return r.date === today && ['declined', 'cancelled'].indexOf(r.status) < 0; });
+    var ords = j.orders.filter(function (o) { return o.date === today && o.status !== 'cancelled'; });
+    if (!res.length && !ords.length) return '';
+    var items = res.map(function (r) { return { t: r.time, html: resRow(r, false) }; }).concat(ords.map(function (o) { return { t: o.slot, html: orderRow(o) }; }));
+    items.sort(function (a, b) { return a.t.localeCompare(b.t); });
+    return '<h3>Today’s tables and orders</h3><div class="card">' + items.map(function (x) { return x.html; }).join('') + '</div>';
   }
 
   function bookingRow(b) {
@@ -306,7 +360,7 @@
         return '<div class="row' + (shows(k) ? '' : ' dim') + '"><div class="grow"><b>' + esc(C.sections[k].label) + '</b></div><span class="mover"><button aria-label="Move up" data-home-move="' + k + '|up" ' + (i === 0 ? 'disabled' : '') + '>↑</button><button aria-label="Move down" data-home-move="' + k + '|down" ' + (i === order.length - 1 ? 'disabled' : '') + '>↓</button></span></div>';
       }).join('') +
       '<h3>Page content</h3><div class="quick">' +
-      [['about', 'About', '✎'], ['gallery', 'Gallery', '▦'], ['info', 'Good to know', 'i'], ['hire', 'Private hire', '◇'], ['links', 'Links, ordering, reviews', '↗']].filter(function (c) { return c[0] === 'links' || v.modules[c[0]]; }).map(function (c) {
+      [['tables', 'Table bookings', '▤'], ['collect', 'Order ahead', '⧉'], ['alerts', 'Alerts', '!'], ['about', 'About', '✎'], ['gallery', 'Gallery', '▦'], ['info', 'Good to know', 'i'], ['hire', 'Private hire', '◇'], ['links', 'Links, ordering, reviews', '↗']].filter(function (c) { return c[0] === 'links' || c[0] === 'alerts' || v.modules[c[0]]; }).map(function (c) {
         return '<button data-content="' + c[0] + '"><span>' + c[2] + '</span><span>' + c[1] + '</span></button>';
       }).join('') + '</div>' +
       '<h3>Hours</h3><div class="card"><b>Today</b> <span class="pill ' + (S.data.status.open ? 'ok' : 'bad') + '">' + esc(S.data.status.label) + '</span>' +
@@ -379,22 +433,25 @@
     }).join('') + '<button class="btn small" style="margin:6px 0 18px" data-po-edit="">＋ New pre-order</button>';
   }
 
+  function orderRow(o) {
+    var wa = waLink(o.contact, 'Hi ' + o.name + ', your order from ' + V().name + ' is ready to collect.');
+    return '<div class="row" style="align-items:flex-start"><div class="grow"><b>' + esc(o.slot) + ' · ' + esc(o.name) + '</b> <span class="pill ' + (o.mode === 'sitin' ? 'plain' : 'warn') + '">' + esc(o.preorder_id === 'collect' ? 'Order ahead' : MODE_NAME[o.mode]) + '</span>' + (o.status === 'new' ? ' <span class="pill warn">new</span>' : '') +
+      '<div class="muted">' + esc(o.items.map(function (i) { return i.qty + ' × ' + i.name; }).join(', ')) + ' · ' + euro(o.total) + '</div>' +
+      '<div class="muted">' + contactLinks(o.contact) + (wa ? ' · <a href="' + esc(wa) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') + ' · ' + esc(o.source || 'direct') + '</div>' +
+      (o.note ? '<div class="muted">“' + esc(o.note) + '”</div>' : '') + '</div>' +
+      '<select data-order="' + o.id + '" aria-label="Order status">' + ['new', 'ready', 'collected', 'cancelled'].map(function (st) { return '<option ' + (o.status === st ? 'selected' : '') + '>' + st + '</option>'; }).join('') + '</select></div>';
+  }
+
   function ordersInbox() {
     var j = S.data, today = j.schedule.today;
-    var coming = j.orders.filter(function (o) { return o.date >= today; });
-    if (!coming.length) return '<div class="card">No pre-orders coming up. Copy the order link from the Menu tab and share it.</div>';
+    var coming = j.orders.filter(function (o) { return o.date >= j.localToday; });
+    if (!coming.length) return '<div class="card">No orders coming up.' + (V().modules.collect ? ' Share your order link: <b>' + esc(j.baseUrl) + '/collect</b>' : ' Copy the order link from the Menu tab and share it.') + '</div>';
     var groups = {};
     coming.forEach(function (o) { var k = o.preorder_id + '@' + o.date; (groups[k] = groups[k] || []).push(o); });
     return Object.keys(groups).sort(function (a, b) { return a.split('@')[1].localeCompare(b.split('@')[1]); }).map(function (k) {
       var list = groups[k].slice().sort(function (a, b) { return a.slot.localeCompare(b.slot); });
       return '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>' + esc(list[0].preorder_name) + '</b><span class="pill plain">' + esc(shortDate(list[0].date)) + '</span></div>' +
-        list.map(function (o) {
-          return '<div class="row" style="align-items:flex-start"><div class="grow"><b>' + esc(o.slot) + ' · ' + esc(o.name) + '</b> <span class="pill ' + (o.mode === 'sitin' ? 'plain' : 'warn') + '">' + esc(MODE_NAME[o.mode]) + '</span>' +
-            '<div class="muted">' + esc(o.items.map(function (i) { return i.qty + ' × ' + i.name; }).join(', ')) + ' · ' + euro(o.total) + '</div>' +
-            '<div class="muted"><a href="' + (o.contact.indexOf('@') > 0 ? 'mailto:' : 'tel:') + esc(o.contact.replace(/\s/g, '')) + '">' + esc(o.contact) + '</a> · ' + esc(o.source || 'direct') + '</div>' +
-            (o.note ? '<div class="muted">“' + esc(o.note) + '”</div>' : '') + '</div>' +
-            '<select data-order="' + o.id + '" aria-label="Order status">' + ['new', 'ready', 'collected', 'cancelled'].map(function (st) { return '<option ' + (o.status === st ? 'selected' : '') + '>' + st + '</option>'; }).join('') + '</select></div>';
-        }).join('') + '</div>';
+        list.map(orderRow).join('') + '</div>';
     }).join('');
   }
 
@@ -751,6 +808,87 @@
     });
   }
 
+  function setRes(id, status) {
+    return api('/api/admin/reservations/' + id, { method: 'PATCH', body: { status: status } }).then(function (j) {
+      return load().then(function () {
+        if (j.whatsapp && !j.emailed && (status === 'confirmed' || status === 'declined')) {
+          openSheet(head('Booking ' + status) + '<p>Let the guest know. Their message is written for you.</p><a class="btn dark block" href="' + esc(j.whatsapp) + '" target="_blank" rel="noopener" data-close>Send on WhatsApp ↗</a>');
+        } else toast('Booking ' + status + (j.emailed ? ' · guest emailed' : ''));
+      });
+    }).catch(fail);
+  }
+
+  function tablesSheet() {
+    var t = S.data.tables, own = (S.data.state.links || {}).bookingUrl;
+    openSheet(head('Table bookings') + (own ? '<div class="err">Your own booking system is set in Links, so guests book there. Remove that link to use these booking times.</div>' : '') +
+      '<form id="tbForm"><label class="f">Booking times<input name="times" value="' + esc(t.times.join(' ')) + '" placeholder="13:00 13:30 14:00 20:00 20:30 21:00"></label>' +
+      '<p class="muted" style="margin:-4px 0 12px">Separate with spaces. Only times inside your opening hours show to guests.</p>' +
+      '<div class="grid2"><label class="f">Guests per time<input type="number" name="covers" min="1" max="1000" value="' + esc(t.covers) + '"></label><label class="f">Biggest party<input type="number" name="maxParty" min="1" max="50" value="' + esc(t.maxParty) + '"></label></div>' +
+      '<div class="grid2"><label class="f">Notice (minutes)<input type="number" name="notice" min="0" max="2880" value="' + esc(t.notice) + '"></label><label class="f">Days ahead<input type="number" name="daysAhead" min="1" max="180" value="' + esc(t.daysAhead) + '"></label></div>' +
+      '<label class="f">Confirming</label><div class="chips"><label class="daychip"><input type="radio" name="mode" value="auto" ' + (t.mode === 'auto' ? 'checked' : '') + '><span>Automatic while there is space</span></label><label class="daychip"><input type="radio" name="mode" value="manual" ' + (t.mode === 'manual' ? 'checked' : '') + '><span>I confirm each one</span></label></div>' +
+      '<div id="tbErr"></div><button class="btn dark block" type="submit">Save</button></form>');
+    $('#tbForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = e.target;
+      act('tables.save', { times: f.times.value, covers: f.covers.value, maxParty: f.maxParty.value, notice: f.notice.value, daysAhead: f.daysAhead.value, mode: f.mode.value }).then(function (j) { closeSheet(); toast(j.change.summary); }).catch(function (err) { errBox('#tbErr', err); });
+    });
+  }
+
+  function collectSheet() {
+    var c = S.data.collect;
+    openSheet(head('Order ahead') + '<form id="coForm">' +
+      '<label class="daychip" style="margin-bottom:14px"><input type="checkbox" name="open" ' + (c.open ? 'checked' : '') + '><span>Taking orders on the site</span></label>' +
+      '<div class="grid2"><label class="f">Pickup from<input type="time" name="from" value="' + esc(c.from) + '"></label><label class="f">Until<input type="time" name="to" value="' + esc(c.to) + '"></label></div>' +
+      '<div class="grid2"><label class="f">Times every<select name="every">' + [10, 15, 20, 30].map(function (n) { return '<option value="' + n + '" ' + (c.every === n ? 'selected' : '') + '>' + n + ' minutes</option>'; }).join('') + '</select></label>' +
+      '<label class="f">Kitchen needs (minutes)<input type="number" name="notice" min="0" max="240" value="' + esc(c.notice) + '"></label></div>' +
+      '<p class="muted">Guests order from the menus that run today. Sold out dishes are hidden. Paid on collection. Turn it off on busy nights.</p>' +
+      '<div id="coErr"></div><button class="btn dark block" type="submit">Save</button></form>');
+    $('#coForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = e.target;
+      act('collect.save', { open: f.open.checked, from: f.from.value, to: f.to.value, every: f.every.value, notice: f.notice.value }).then(function (j) { closeSheet(); toast(j.change.summary + ' · live'); }).catch(function (err) { errBox('#coErr', err); });
+    });
+  }
+
+  function alertsSheet() {
+    var a = S.data.alerts, cur = (S.data.state.alerts || {}).email || '';
+    openSheet(head('Alerts') + '<form id="alForm"><label class="f">Email new bookings and orders to<input type="email" name="email" value="' + esc(cur) + '" placeholder="' + esc(V().email || 'you@yourvenue.com') + '"></label>' +
+      '<p class="muted">Leave empty to use the venue email. ' + (a.mailbox ? 'The mailbox is set up.' : 'Emails start once the sending mailbox is set up on the server.') + ' While this editor is open on a phone or tablet, it also rings and shows a count.</p>' +
+      '<div id="alErr"></div><button class="btn dark block" type="submit">Save</button></form>');
+    $('#alForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      act('alerts.save', { email: e.target.email.value }).then(function (j) { closeSheet(); toast(j.change.summary); }).catch(function (err) { errBox('#alErr', err); });
+    });
+  }
+
+  // ---------- ring when something new arrives ----------
+  var pulse = { newest: null, timer: null, audio: null };
+  function ring() {
+    try {
+      var C = window.AudioContext || window.webkitAudioContext;
+      if (!C) return;
+      pulse.audio = pulse.audio || new C();
+      var ctx = pulse.audio, t0 = ctx.currentTime;
+      [0, 0.25].forEach(function (d, i) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = i ? 1100 : 880; o.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.3, t0 + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.22);
+        o.start(t0 + d); o.stop(t0 + d + 0.24);
+      });
+    } catch (err) { /* sound is a bonus */ }
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  }
+  // Browsers only allow sound after a tap; unlock it on the first one.
+  document.addEventListener('click', function () { try { var C = window.AudioContext || window.webkitAudioContext; if (C && !pulse.audio) pulse.audio = new C(); if (pulse.audio && pulse.audio.state === 'suspended') pulse.audio.resume(); } catch (err) { /* ignore */ } }, { once: true });
+  function checkPulse() {
+    if (!S.data) return;
+    api('/api/admin/pulse').then(function (p) {
+      if (pulse.newest && p.newest !== pulse.newest) { ring(); toast('Something new in the Inbox'); load(); }
+      pulse.newest = p.newest;
+    }).catch(function () { /* offline for a moment */ });
+  }
+  function startPulse() { if (!pulse.timer) { checkPulse(); pulse.timer = setInterval(checkPulse, 20000); } }
+
   function offerSheet(o) {
     var x = o || { name: '', detail: '', days: DAYS.slice(0, 5), from: '18:00', to: '20:00' };
     openSheet(head(o ? 'Edit offer' : 'New offer') + '<form id="ofForm"><label class="f">Name<input name="name" required maxlength="50" value="' + esc(x.name) + '" placeholder="Happy hour"></label>' +
@@ -846,7 +984,7 @@
   function split(t, attr) { return t.getAttribute(attr).split('|'); }
 
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-close], [data-close-bg], [data-go], [data-share], [data-share-story], [data-del-story], [data-edit-event], [data-results], [data-menu], [data-new-menu], [data-edit-menu], [data-edit-section], [data-new-section], [data-new-item], [data-edit-item], [data-price], [data-sold], [data-move], [data-inbox], [data-enq], [data-today], [data-look], [data-accent], [data-preset], [data-module], [data-home-move], [data-content], [data-edit-offer], [data-copy], [data-reset], [data-logout], [data-po-edit], [data-po-open], [data-po-item], [data-po-sold], [data-go-orders]');
+    var t = e.target.closest('[data-close], [data-close-bg], [data-go], [data-share], [data-share-story], [data-del-story], [data-edit-event], [data-results], [data-menu], [data-new-menu], [data-edit-menu], [data-edit-section], [data-new-section], [data-new-item], [data-edit-item], [data-price], [data-sold], [data-move], [data-inbox], [data-enq], [data-today], [data-look], [data-accent], [data-preset], [data-module], [data-home-move], [data-content], [data-edit-offer], [data-copy], [data-reset], [data-logout], [data-po-edit], [data-po-open], [data-po-item], [data-po-sold], [data-go-orders], [data-res]');
     if (!t || t.disabled) return;
     if (t.hasAttribute('data-close-bg')) { if (e.target === t) closeSheet(); return; }
     if (t.hasAttribute('data-close')) return closeSheet();
@@ -896,7 +1034,8 @@
     }
     if (t.hasAttribute('data-module')) return act('module.toggle', { module: t.getAttribute('data-module') }).then(function (j) { toast(j.change.summary); }).catch(fail);
     if (t.hasAttribute('data-home-move')) { var hm = split(t, 'data-home-move'); return act('home.move', { section: hm[0], dir: hm[1] }).catch(fail); }
-    if (t.hasAttribute('data-content')) return ({ about: aboutSheet, gallery: gallerySheet, info: infoSheet, hire: hireSheet, links: linksSheet })[t.getAttribute('data-content')]();
+    if (t.hasAttribute('data-content')) { e.preventDefault(); return ({ about: aboutSheet, gallery: gallerySheet, info: infoSheet, hire: hireSheet, links: linksSheet, tables: tablesSheet, collect: collectSheet, alerts: alertsSheet })[t.getAttribute('data-content')](); }
+    if (t.hasAttribute('data-res')) return setRes(t.getAttribute('data-res'), t.getAttribute('data-status'));
     if (t.hasAttribute('data-edit-offer')) return offerSheet(S.data.state.offers.find(function (o) { return o.id === t.getAttribute('data-edit-offer'); }));
     if (t.hasAttribute('data-po-edit')) return poSheet(findPo(t.getAttribute('data-po-edit')) || null);
     if (t.hasAttribute('data-po-open')) { var pz = findPo(t.getAttribute('data-po-open')); return act('preorder.open', { id: pz.id, open: !pz.open }).then(function (j) { toast(j.change.summary + ' · live'); }).catch(fail); }
@@ -912,6 +1051,8 @@
   });
 
   document.addEventListener('change', function (e) {
+    var rs = e.target.closest('[data-res-sel]');
+    if (rs) return setRes(rs.getAttribute('data-res-sel'), rs.value);
     var ord = e.target.closest('[data-order]');
     if (ord) return api('/api/admin/orders/' + ord.getAttribute('data-order'), { method: 'PATCH', body: { status: ord.value } }).then(function () { toast('Order ' + ord.value); return load(); }).catch(fail);
     var sel = e.target.closest('[data-booking]');
@@ -925,6 +1066,6 @@
   api('/api/editor-info').then(function (info) {
     if (!info.loggedIn) return showLogin();
     tabs.classList.remove('hidden');
-    return load();
+    return load().then(startPulse);
   }).catch(function () { showLogin(); });
 })();
