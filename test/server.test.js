@@ -218,3 +218,22 @@ test('the Playbook guide merges client venue feeds and skips one that is down', 
   assert.strictEqual(r.status, 200);
   assert.strictEqual((await r.json()).venues.length, 4);
 });
+
+test('ibizaplaybook.com shows only the guest guide, never the sample venues', async () => {
+  const h = { headers: { 'x-forwarded-host': 'ibizaplaybook.com' }, redirect: 'manual' };
+  const home = await fetch(base + '/', h);
+  assert.strictEqual(home.status, 200);
+  const html = await home.text();
+  assert.match(html, /<html lang="es" data-guest>/);
+  assert.match(html, /MUY PRONTO/);
+  const www = await (await fetch(base + '/', { headers: { 'x-forwarded-host': 'www.ibizaplaybook.com' } })).text();
+  assert.match(www, /data-guest/);
+  const feed = await (await fetch(base + '/api/playbook-guide.json', h)).json();
+  assert.strictEqual(feed.venues.length, 0);
+  const menu = await fetch(base + '/menu?sample=cafe', h);
+  assert.strictEqual(menu.status, 302);
+  assert.match(menu.headers.get('location'), /venue\.foodforthought\.agency\/menu\?sample=cafe$/);
+  const demo = await (await fetch(base + '/playbook')).text();
+  assert.match(demo, /<html lang="en">/);
+  assert.strictEqual((await (await fetch(base + '/api/playbook-guide.json')).json()).venues.length, 4);
+});

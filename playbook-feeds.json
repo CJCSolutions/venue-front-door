@@ -1,4 +1,8 @@
 {
   "about": "Client venues shown in the Ibiza Playbook. Add each venue's site address (its own install). The guide reads <address>/api/playbook.json every minute.",
+  "guestDomains": [
+    "ibizaplaybook.com"
+  ],
+  "guestDomainsAbout": "Addresses that open the guest Playbook at the root. Sample venues never show there; until a client feed answers, guests see the holding page.",
   "feeds": []
 }

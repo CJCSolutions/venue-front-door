@@ -121,6 +121,15 @@ header { padding: 18px 0 6px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .note { font-size: 12px; color: var(--muted); }
 [hidden] { display: none !important; }
+[data-guest] .demo { display: none; }
+.hold { min-height: 78vh; display: grid; align-content: center; gap: 18px; padding: 24px 0; }
+.hold .brand { font-size: 40px; }
+.hold h2 { font: 700 24px/1.2 var(--display); margin: 0; text-wrap: balance; }
+.hold p { margin: 0; color: var(--muted); }
+.hold .en { border-top: 1px solid var(--line); padding-top: 14px; }
+.hold .soon { display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--pink); background: var(--pink-soft); padding: 4px 10px; border-radius: 99px; justify-self: start; }
+.hold .venues { font-size: 14px; }
+.hold .venues a { color: var(--pink); font-weight: 600; }
 @media (prefers-reduced-motion: no-preference) { .sheet { animation: up .18s ease-out; } @keyframes up { from { transform: translateY(24px); opacity: .6; } } }
 </style>
 </head>
@@ -132,7 +141,15 @@ header { padding: 18px 0 6px; }
     <div id="feedNote" class="note"></div>
   </div>
 
-  <header>
+  <section class="hold" id="hold" hidden>
+    <h1 class="brand">The Ibiza <span>Playbook</span></h1>
+    <span class="soon">MUY PRONTO</span>
+    <div><h2>Qué hay esta noche, directo de los locales.</h2><p>Cena con DJ, música en directo, atardeceres y planes en familia, con la información de cada local al momento.</p></div>
+    <div class="en"><h2>What's on tonight, straight from the venues.</h2><p>Food with a DJ, live music, sunsets and family plans, live from each venue's own information.</p></div>
+    <p class="venues">¿Tienes un local? / Run a venue? <a href="https://foodforthought.agency">Get listed</a></p>
+  </section>
+
+  <header id="guideHead">
     <h1 class="brand">The Ibiza <span>Playbook</span></h1>
     <p class="sub">What's on right now, the way you like it.</p>
   </header>
@@ -189,7 +206,7 @@ header { padding: 18px 0 6px; }
     <div class="venue-box">
       <h3>Show up as Verified</h3>
       <p>Venues on the venue platform appear with their real line-up, menu by time of day, offers and a button to book or pre-order. You update it once on your phone; the Playbook, your site and Google stay in step.</p>
-      <div class="actions"><a class="btn" href="/?sample=restaurant">See the venue platform</a></div>
+      <div class="actions"><a class="btn" id="platformLink" href="/?sample=restaurant">See the venue platform</a></div>
       <p class="note">Listings from Instagram are read from your public posts and marked as such. Verified listings come first.</p>
     </div>
   </main>
@@ -220,12 +237,22 @@ header { padding: 18px 0 6px; }
     { id: 'blava', name: 'Platja Blava', area: 'Santa Eulària', kind: 'Beach restaurant', day: 1, start: 720, end: 990, tags: ['food', 'family', 'live'], src: 'ig', what: 'Paella on the beach, live acoustic duo at lunch.', caption: '“Sunday paella and our acoustic duo from 13:00.”', read: 'Read from their post yesterday', confidence: 'food, family, live music' }
   ];
 
+  var GUEST = document.documentElement.hasAttribute('data-guest');
+  if (GUEST) IG = []; // made-up Instagram listings are for the demo only
   var D = IG.slice();
+  // Guests with no venue yet see the holding page; it switches by itself once a client feed answers.
+  function holding(on) {
+    document.getElementById('hold').hidden = !on;
+    ['guideHead', 'view-tonight', 'view-saved', 'view-venues'].forEach(function (id) { if (on) document.getElementById(id).hidden = true; });
+    document.querySelector('.nav').hidden = on;
+    if (!on) document.getElementById('guideHead').hidden = false;
+    return on;
+  }
   var S = { when: 'tonight', tags: [], area: '', clock: 1260, view: 'tonight', saved: {}, today: null };
 
   // Verified listings, live from the venue platform.
   function loadFeed(first) {
-    return fetch('/api/playbook-guide.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (f) {
+    return fetch('/api/playbook-guide.json' + (GUEST ? '?guest=1' : ''), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (f) {
       S.today = f.today;
       if (first) { var t = f.localTime.split(':'); var m = Number(t[0]) * 60 + Number(t[1]); if (m < 360) m += 1440; S.clock = Math.min(1740, Math.max(360, Math.round(m / 30) * 30)); $('#clock').value = S.clock; }
       var v = [];
@@ -236,12 +263,13 @@ header { padding: 18px 0 6px; }
         });
       });
       D = v.concat(IG);
+      if (GUEST && holding(!v.length && !f.venues.length)) return;
       var src = f.sources || [], clients = src.slice(1), down = clients.filter(function (x) { return !x.ok; });
       $('#feedNote').textContent = v.length + ' verified listings from ' + f.venues.length + (f.venues.length === 1 ? ' venue' : ' venues') +
         (clients.length ? ' (' + (clients.length - down.length) + ' of ' + clients.length + ' client sites answering)' : '') +
         ', refreshed ' + f.localTime + '.' + (down.length ? ' Not reachable right now: ' + down.map(function (x) { return x.host; }).join(', ') + '.' : '');
       render();
-    }).catch(function () { $('#feedNote').textContent = 'Could not reach the venue platform. Showing Instagram listings only.'; render(); });
+    }).catch(function () { if (GUEST && !D.length) return holding(true); $('#feedNote').textContent = 'Could not reach the venue platform. Showing Instagram listings only.'; render(); });
   }
   try { S.saved = JSON.parse(localStorage.getItem('playbook-saved') || '{}'); } catch (e) { S.saved = {}; }
 
@@ -400,7 +428,7 @@ header { padding: 18px 0 6px; }
   $('#area').addEventListener('change', function (e) { S.area = e.target.value; render(); });
   $('#clock').addEventListener('input', function (e) { S.clock = Number(e.target.value); render(); });
   $('#nowBtn').addEventListener('click', function () { loadFeed(true); });
-  render();
+  if (GUEST) { $('#platformLink').href = 'https://foodforthought.agency'; holding(true); } else render();
   loadFeed(true);
   setInterval(function () { if (!document.hidden) loadFeed(false); }, 20000);
 })();

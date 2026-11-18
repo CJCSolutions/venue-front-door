@@ -12,7 +12,7 @@ const { buildStats } = require('./lib/stats');
 const { preordersNow, remaining, prepList, MODES } = require('./lib/orders');
 const { localNow, addDays } = require('./lib/time');
 const render = require('./lib/render');
-const { buildFeed, guideFeed } = require('./lib/playbook');
+const { buildFeed, guideFeed, isGuestHost } = require('./lib/playbook');
 const pitch = require('./lib/pitch');
 const LEADS_PASSWORD = process.env.LEADS_PASSWORD || '';
 
@@ -135,13 +135,28 @@ function countVisit(req) {
   store.getState().then(({ data }) => store.countView(localNow(data.venue.timezone).date, visitSource(req))).catch(() => {});
 }
 
+// ---------- the guest Playbook address (ibizaplaybook.com) ----------
+// That address shows only the guide. Everything else on it goes to the venue
+// platform's own address, so guests never land on a sample venue page.
+const GUEST_PATHS = new Set(['/', '/playbook', '/api/playbook-guide.json', '/api/playbook.json', '/healthz']);
+function playbookPage(guest) {
+  const html = require('fs').readFileSync(path.join(__dirname, 'public', 'playbook.html'), 'utf8');
+  return guest ? html.replace('<html lang="en">', '<html lang="es" data-guest>') : html;
+}
+app.use((req, res, next) => {
+  if (!isGuestHost(req.hostname)) return next();
+  req.guest = true;
+  if (GUEST_PATHS.has(req.path)) return next();
+  res.redirect(302, `${process.env.PUBLIC_URL || 'https://venue.foodforthought.agency'}${req.originalUrl}`);
+});
+
 // ---------- static ----------
 
 app.use(express.static(path.join(__dirname, 'public'), { index: false, maxAge: '1h' }));
 
 // ---------- public site ----------
 
-app.get('/', page(async (req, res) => { countVisit(req); res.send(render.homePage(await context(req, { res }))); }));
+app.get('/', page(async (req, res, next) => { if (req.guest) return res.set('Cache-Control', 'no-store').type('html').send(playbookPage(true)); countVisit(req); res.send(render.homePage(await context(req, { res }))); }));
 app.get('/whats-on', page(async (req, res) => {
   countVisit(req);
   const ctx = await context(req, { res });
@@ -384,11 +399,14 @@ app.get('/api/playbook.json', page(async (req, res) => {
 }));
 // What the guide page reads: this feed plus every client venue's feed
 // (playbook-feeds.json), merged. Client feeds stay their own source of truth.
+// Guests (?guest=1 or the guest address) never see the demo's sample venues.
 app.get('/api/playbook-guide.json', page(async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json(await guideFeed({ own: await ownFeed(req), ownBase: baseUrl(req) }));
+  const own = await ownFeed(req);
+  const guest = req.guest || req.query.guest === '1';
+  res.json(await guideFeed({ own: guest && DEMO ? { ...own, venues: [] } : own, ownBase: baseUrl(req) }));
 }));
-app.get('/playbook', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, 'public', 'playbook.html')); });
+app.get('/playbook', (req, res) => { res.set('Cache-Control', 'no-store').type('html').send(playbookPage(req.guest || req.query.guest === '1')); });
 
 app.get('/api/version', page(async (req, res) => res.json({ version: await store.version() })));
 app.get('/healthz', (req, res) => res.json({ ok: ready, storage: store.kind }));
