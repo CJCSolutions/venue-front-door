@@ -221,7 +221,7 @@ app.post('/book/table', express.urlencoded({ extended: false, limit: '20kb' }), 
   notify.venueAlert(ctx.state, status === 'pending' ? `Booking to confirm: ${tv.guests} at ${tv.time}` : `New booking: ${tv.guests} at ${tv.time}`,
     [`${tv.name}, ${tv.guests} ${tv.guests > 1 ? 'guests' : 'guest'}, ${when}.`, `Contact: ${tv.contact}`, tv.note && `Note: ${tv.note}`, status === 'pending' ? 'Confirm or decline it in the editor.' : 'Confirmed automatically.'],
     { replyTo: tv.contact, base: baseUrl(req) });
-  if (status === 'confirmed') notify.guestEmail(ctx.state, tv.contact, 'your table is booked', [`Hi ${tv.name},`, '', `Your table for ${tv.guests} is booked for ${when}.`, 'Need to change it? Just reply to this email.']);
+  if (status === 'confirmed') notify.guestEmail(ctx.state, tv.contact, 'your table is booked', ['Hello,', '', `Your table for ${tv.guests} is booked for ${when}.`, 'Need to change it? Just reply to this email.']);
   res.send(render.bookPage(ctx, { table: await tableCtx(ctx.state, tv.date), tableSent: { status, ...tv } }));
 }));
 
@@ -254,8 +254,9 @@ app.post('/collect', express.urlencoded({ extended: false, limit: '40kb' }), pag
   const items = all.filter((it) => qty[it.id]).map((it) => ({ id: it.id, name: it.name, qty: qty[it.id], price: it.price }));
   if (!items.length) return again(400, 'Add at least one dish.');
   if (!c.slots.includes(values.slot)) return again(400, 'Pick a pickup time.');
-  const notThen = c.menus.find((m) => !R.serves(m, values.slot) && m.sections.some((sec) => sec.items.some((it) => qty[it.id])));
-  if (notThen) return again(400, `${notThen.name} is served ${notThen.from} to ${notThen.to}. Pick a pickup time then, or choose from another menu.`);
+  const onMenus = R.menusByItem(ctx.state);
+  const notThen = items.find((i) => !(onMenus[i.id] || []).some((m) => R.serves(m, values.slot)));
+  if (notThen) { const m = onMenus[notThen.id][0]; return again(400, `${notThen.name} is served ${m.from} to ${m.to}. Pick a pickup time then, or leave it out.`); }
   if (!values.name || !values.contact) return again(400, 'Please add your name and a phone number or email.');
   const total = Math.round(items.reduce((t, i) => t + i.qty * i.price, 0) * 100) / 100;
   const date = localNow(ctx.state.venue.timezone).date;
@@ -373,14 +374,14 @@ app.post('/book', form, page(async (req, res) => {
     message: String(b.message || '').trim().slice(0, 1000),
     src: cleanSrc(b.src)
   };
-  if (b.website) return res.send(render.bookPage(ctx, { sent: true }));
-  if (limited('book:' + req.ip, 5, 10 * 60 * 1000)) return res.status(429).send(render.bookPage(ctx, { error: 'Too many requests. Please try again in a few minutes.', values }));
-  if (!values.name || !values.contact) return res.status(400).send(render.bookPage(ctx, { error: 'Please add your name and a phone number or email.', values }));
+  if (b.website) return res.send(render.bookPage(ctx, { sent: true, table }));
+  if (limited('book:' + req.ip, 5, 10 * 60 * 1000)) return res.status(429).send(render.bookPage(ctx, { table, error: 'Too many requests. Please try again in a few minutes.', values }));
+  if (!values.name || !values.contact) return res.status(400).send(render.bookPage(ctx, { table, error: 'Please add your name and a phone number or email.', values }));
   await store.addEnquiry({ name: values.name, contact: values.contact, date: values.date || null, guests: values.guests || null, type: values.type, message: values.message, source: values.src || 'direct' });
   notify.venueAlert(ctx.state, `New request: ${({ table: 'group', private: 'private hire', other: 'enquiry' })[values.type]} from ${values.name}`,
     [values.date && `Date: ${formatDate(values.date)}`, values.guests && `Guests: ${values.guests}`, `Contact: ${values.contact}`, values.message && `Message: ${values.message}`],
     { replyTo: values.contact, base: baseUrl(req) });
-  res.send(render.bookPage(ctx, { sent: true, table: await tableCtx(ctx.state) }));
+  res.send(render.bookPage(ctx, { sent: true, table }));
 }));
 
 // ---------- sales page and leads ----------
@@ -613,11 +614,13 @@ app.patch('/api/admin/bookings/:id', requireAdmin, express.json({ limit: '4kb' }
 // What's waiting, checked by the open editor every 20 seconds so it can ring.
 app.get('/api/admin/pulse', requireAdmin, page(async (req, res) => {
   const { data } = await store.getState();
-  const today = localNow(data.venue.timezone).date;
+  const local = localNow(data.venue.timezone);
+  const today = local.date;
+  const orderDay = serviceDate(local);
   const [enquiries, orders, reservations] = await Promise.all([store.listEnquiries(100), store.listOrders(300), store.listReservations(today)]);
   const poIds = (data.preorders || []).map((x) => x.id).concat('collect');
   const waiting = enquiries.filter((e) => e.status === 'new').length +
-    orders.filter((o) => o.status === 'new' && o.date >= today && poIds.includes(o.preorder_id)).length +
+    orders.filter((o) => o.status === 'new' && o.date >= orderDay && poIds.includes(o.preorder_id)).length +
     reservations.filter((r) => r.status === 'pending').length;
   const newest = Math.max(0, ...enquiries.map((e) => e.id)) + '-' + Math.max(0, ...orders.map((o) => o.id)) + '-' + Math.max(0, ...reservations.map((r) => r.id));
   res.set('Cache-Control', 'no-store').json({ waiting, newest });
@@ -629,21 +632,34 @@ app.patch('/api/admin/reservations/:id', requireAdmin, express.json({ limit: '4k
   const r = await store.getReservation(Number(req.params.id));
   if (!r) return res.status(404).json({ error: 'Booking not found' });
   const { data } = await store.getState();
-  // Confirming a declined or cancelled booking takes a place again: check there is one.
-  if (R.HOLDS.includes(status) && !R.HOLDS.includes(r.status)) {
-    const taken = (await store.reservationsTaken(r.date))[r.time] || 0;
-    if (taken + r.guests > R.tableSettings(data).covers) return res.status(409).json({ error: `${r.time} is full now. Move the guest to another time first.` });
-  }
-  await store.setReservationStatus(r.id, status);
+  // Confirming a declined or cancelled booking takes a place again: the store checks there is one.
+  const done = await store.setReservationStatus(r.id, status, R.HOLDS.includes(status) && !R.HOLDS.includes(r.status) ? R.tableSettings(data).covers : null);
+  if (done && done.full) return res.status(409).json({ error: `${r.time} is full now. Cancel another booking first, or ask the guest to pick another time.` });
   const when = `${formatDate(r.date)} at ${r.time}`;
   const v = data.venue.name;
   const words = {
-    confirmed: [`your table is confirmed`, `Hi ${r.name}, your table for ${r.guests} at ${v} is confirmed for ${when}. See you then!`],
-    declined: [`about your booking`, `Hi ${r.name}, sorry, we can't take your booking for ${r.guests} at ${v} on ${when}. Reply and we'll find another time.`],
-    cancelled: [`your booking is cancelled`, `Hi ${r.name}, your booking for ${r.guests} at ${v} on ${when} is cancelled.`]
+    confirmed: ['your table is confirmed', `your table for ${r.guests} at ${v} is confirmed for ${when}. See you then!`],
+    declined: ['about your booking', `sorry, we can't take your booking for ${r.guests} at ${v} on ${when}. Reply and we'll find another time.`],
+    cancelled: ['your booking is cancelled', `your booking for ${r.guests} at ${v} on ${when} is cancelled.`]
   }[status];
-  if (words && r.status !== status) notify.guestEmail(data, r.contact, words[0], [words[1]]);
-  res.json({ ok: true, whatsapp: words ? R.whatsappLink(r.contact, words[1]) : null, emailed: Boolean(words && R.looksLikeEmail(r.contact) && notify.configured() && !DEMO) });
+  if (words && r.status !== status) notify.guestEmail(data, r.contact, words[0], [`Hello, ${words[1]}`]);
+  res.json({ ok: true, whatsapp: words ? R.whatsappLink(r.contact, `Hi ${r.name}, ${words[1]}`) : null, emailed: Boolean(words && R.looksLikeEmail(r.contact) && notify.configured() && !DEMO) });
+}));
+
+// A booking taken by phone or at the door, so it counts against the covers.
+app.post('/api/admin/reservations', requireAdmin, express.json({ limit: '4kb' }), page(async (req, res) => {
+  const b = req.body || {};
+  const { data } = await store.getState();
+  const st = R.tableSettings(data);
+  const r = { date: String(b.date || ''), time: String(b.time || ''), guests: parseInt(b.guests, 10) || 0, name: String(b.name || '').trim().slice(0, 80), contact: String(b.contact || '').trim().slice(0, 120), note: String(b.note || '').trim().slice(0, 300), status: 'confirmed', source: 'phone' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date) || r.date < localNow(data.venue.timezone).date) return res.status(400).json({ error: 'Pick today or a later day' });
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(r.time)) return res.status(400).json({ error: 'Time must look like 20:30' });
+  if (!(r.guests >= 1 && r.guests <= 500)) return res.status(400).json({ error: 'Guests must be between 1 and 500' });
+  if (!r.name) return res.status(400).json({ error: 'Add the guest name' });
+  if (!r.contact) r.contact = '-';
+  const result = await store.addReservation(r, b.force ? 100000 : st.covers);
+  if (result.full) return res.status(409).json({ error: `Only ${result.left} ${result.left === 1 ? 'place' : 'places'} left at ${r.time}.`, full: true });
+  res.json({ ok: true, id: result.id });
 }));
 
 app.patch('/api/admin/orders/:id', requireAdmin, express.json({ limit: '4kb' }), page(async (req, res) => {

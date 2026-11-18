@@ -50,7 +50,7 @@
       var vis = { events: Mo.events, menu: Mo.menu || Mo.offers || Mo.preorder, inbox: Mo.tables || Mo.hire || Mo.bookings || Mo.preorder || Mo.collect, circle: Mo.circle };
       Object.keys(vis).forEach(function (k) { tabs.querySelector('[data-tab="' + k + '"]').classList.toggle('hidden', !vis[k]); });
       if (vis[S.tab] === false) S.tab = 'today';
-      var waiting = j.enquiries.filter(function (e) { return e.status === 'new'; }).length + j.orders.filter(function (o) { return o.status === 'new' && o.date >= j.localToday; }).length + j.reservations.filter(function (r) { return r.status === 'pending'; }).length;
+      var waiting = j.enquiries.filter(function (e) { return e.status === 'new'; }).length + j.orders.filter(function (o) { return o.status === 'new' && o.date >= j.schedule.today; }).length + j.reservations.filter(function (r) { return r.status === 'pending'; }).length;
       if (!S.inboxSet) { S.inbox = j.tablesOn ? 'tables' : Mo.bookings ? 'bookings' : (Mo.preorder || Mo.collect) ? 'orders' : 'requests'; S.inboxSet = true; }
       document.title = (waiting ? '(' + waiting + ') ' : '') + j.state.venue.name + ' · Editor';
       var btn = tabs.querySelector('[data-tab="inbox"]'), badge = btn.querySelector('.badge');
@@ -257,7 +257,8 @@
   function tablesInbox() {
     var j = S.data, t = j.tables;
     var list = j.reservations.filter(function (r) { return r.date >= j.localToday; });
-    var head = '<p class="muted">' + t.times.length + ' booking times, ' + t.covers + ' guests each, up to ' + t.maxParty + ' per table. ' + (t.mode === 'auto' ? 'Confirmed automatically while there is space.' : 'You confirm each booking.') + ' <a href="#" data-content="tables">Change</a></p>';
+    var head = '<p class="muted">' + t.times.length + ' booking times, ' + t.covers + ' guests each, up to ' + t.maxParty + ' per table. ' + (t.mode === 'auto' ? 'Confirmed automatically while there is space.' : 'You confirm each booking.') + ' <a href="#" data-content="tables">Change</a></p>' +
+      '<button class="btn small dark" data-content="addres" style="margin-bottom:12px">＋ Add a phone booking</button>';
     if (!list.length) return head + '<div class="card">No table bookings coming up. Share your booking link: <b>' + esc(j.baseUrl) + '/book</b></div>';
     var by = {};
     list.forEach(function (r) { (by[r.date] = by[r.date] || []).push(r); });
@@ -444,7 +445,7 @@
 
   function ordersInbox() {
     var j = S.data, today = j.schedule.today;
-    var coming = j.orders.filter(function (o) { return o.date >= j.localToday; });
+    var coming = j.orders.filter(function (o) { return o.date >= today; });
     if (!coming.length) return '<div class="card">No orders coming up.' + (V().modules.collect ? ' Share your order link: <b>' + esc(j.baseUrl) + '/collect</b>' : ' Copy the order link from the Menu tab and share it.') + '</div>';
     var groups = {};
     coming.forEach(function (o) { var k = o.preorder_id + '@' + o.date; (groups[k] = groups[k] || []).push(o); });
@@ -834,6 +835,28 @@
     });
   }
 
+  function addResSheet() {
+    var t = S.data.tables;
+    openSheet(head('Add a phone booking') + '<form id="arForm"><div class="grid2"><label class="f">Day<input type="date" name="date" required value="' + esc(S.data.localToday) + '" min="' + esc(S.data.localToday) + '"></label>' +
+      '<label class="f">Time<select name="time">' + t.times.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select></label></div>' +
+      '<div class="grid2"><label class="f">Guests<input type="number" name="guests" min="1" max="500" value="2" required></label><label class="f">Name<input name="name" required maxlength="80"></label></div>' +
+      '<label class="f">Phone or email<input name="contact" maxlength="120" inputmode="tel"></label>' +
+      '<label class="f">Note<input name="note" maxlength="300" placeholder="Birthday, high chair"></label>' +
+      '<p class="muted">It counts against the guests per time, so the site never overbooks.</p><div id="arErr"></div><button class="btn dark block" type="submit">Add booking</button></form>');
+    $('#arForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = e.target, body = { date: f.date.value, time: f.time.value, guests: f.guests.value, name: f.name.value, contact: f.contact.value, note: f.note.value };
+      function send(force) {
+        body.force = force;
+        return api('/api/admin/reservations', { method: 'POST', body: body }).then(function () { closeSheet(); toast('Booking added'); return load(); });
+      }
+      send(false).catch(function (err) {
+        if (/left at/.test(err.message) && window.confirm(err.message + ' Add it anyway?')) return send(true).catch(function (e2) { errBox('#arErr', e2); });
+        errBox('#arErr', err);
+      });
+    });
+  }
+
   function collectSheet() {
     var c = S.data.collect;
     openSheet(head('Order ahead') + '<form id="coForm">' +
@@ -1034,7 +1057,7 @@
     }
     if (t.hasAttribute('data-module')) return act('module.toggle', { module: t.getAttribute('data-module') }).then(function (j) { toast(j.change.summary); }).catch(fail);
     if (t.hasAttribute('data-home-move')) { var hm = split(t, 'data-home-move'); return act('home.move', { section: hm[0], dir: hm[1] }).catch(fail); }
-    if (t.hasAttribute('data-content')) { e.preventDefault(); return ({ about: aboutSheet, gallery: gallerySheet, info: infoSheet, hire: hireSheet, links: linksSheet, tables: tablesSheet, collect: collectSheet, alerts: alertsSheet })[t.getAttribute('data-content')](); }
+    if (t.hasAttribute('data-content')) { e.preventDefault(); return ({ about: aboutSheet, gallery: gallerySheet, info: infoSheet, hire: hireSheet, links: linksSheet, tables: tablesSheet, collect: collectSheet, alerts: alertsSheet, addres: addResSheet })[t.getAttribute('data-content')](); }
     if (t.hasAttribute('data-res')) return setRes(t.getAttribute('data-res'), t.getAttribute('data-status'));
     if (t.hasAttribute('data-edit-offer')) return offerSheet(S.data.state.offers.find(function (o) { return o.id === t.getAttribute('data-edit-offer'); }));
     if (t.hasAttribute('data-po-edit')) return poSheet(findPo(t.getAttribute('data-po-edit')) || null);

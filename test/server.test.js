@@ -367,3 +367,29 @@ test('settings reject bad input', async () => {
   assert.strictEqual((await adminAction(cookie, 'alerts.save', { email: 'not-an-email' })).status, 400);
   assert.strictEqual((await adminAction(cookie, 'alerts.save', { email: 'kitchen@marea.example' })).status, 200);
 });
+
+test('table bookings stay off until the venue saves its own times', () => {
+  const R = require('../lib/reservations');
+  const state = { venue: { modules: { tables: true }, timezone: 'Europe/Madrid' }, links: {} };
+  assert.strictEqual(R.tablesOn(state), false);
+  assert.strictEqual(R.tablesOn({ ...state, tableBooking: { times: ['20:00'] } }), true);
+  assert.strictEqual(R.tablesOn({ ...state, tableBooking: { times: ['20:00'] }, links: { bookingUrl: 'https://x.example' } }), false);
+  assert.strictEqual(R.looksLikeEmail('"x"<victim@evil.example>'), false);
+  assert.strictEqual(R.looksLikeEmail('ana@example.com'), true);
+});
+
+test('booking times after midnight are refused, phone bookings count against covers', async () => {
+  const cookie = await session();
+  const late = await adminAction(cookie, 'tables.save', { times: '22:00 00:30', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto' });
+  assert.strictEqual(late.status, 400);
+  assert.match(late.body.error, /after midnight/);
+  await adminAction(cookie, 'tables.save', { times: '13:00 20:00', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto' });
+  const state = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
+  const date = require('../lib/time').addDays(state.localToday, 20);
+  const add = (guests, force) => fetch(base + '/api/admin/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ date, time: '20:00', guests, name: 'Phone guest', force }) });
+  assert.strictEqual((await add(3)).status, 200);
+  assert.strictEqual((await add(2)).status, 409);
+  assert.strictEqual((await add(2, true)).status, 200);
+  const page = await (await fetch(base + '/book?date=' + date)).text();
+  assert.match(page, /20:00 · full/);
+});
