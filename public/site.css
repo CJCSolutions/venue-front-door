@@ -89,7 +89,8 @@ img { max-width: 100%; display: block; }
 .hero-text { flex: 1 1 380px; min-width: 0; }
 .kicker { display: block; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .85; }
 h1, .page-title, .card-title, .dish-name { font-family: var(--head); font-weight: var(--head-weight); text-transform: var(--head-case); letter-spacing: var(--head-space); }
-h1 { font-size: var(--hero-size); line-height: var(--hero-line); margin: 12px 0 14px; overflow-wrap: anywhere; }
+h1 { font-size: var(--hero-size); line-height: var(--hero-line); margin: 12px 0 14px; overflow-wrap: break-word; hyphens: auto; }
+@media (max-width: 480px) { h1 { font-size: min(var(--hero-size), 10.5vw); } }
 .page-title { font-size: clamp(40px, 6vw, 72px); line-height: 1; margin: 0 0 28px; }
 .lede { font-size: 18px; max-width: 46ch; margin: 0; }
 .lineup { list-style: none; padding: 0; margin: 16px 0 0; max-width: 420px; }
