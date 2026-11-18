@@ -127,7 +127,7 @@ header { padding: 18px 0 6px; }
 <body>
 <div class="app">
   <div class="demo" role="region" aria-label="Demo controls">
-    <div><b>Live demo.</b> Verified listings come straight from the four sample venues on the venue platform. <a href="/admin" target="_blank" rel="noopener" style="color:var(--pink)">Change Marea in its editor</a> and watch it update here. Instagram listings are made up for the demo.</div>
+    <div><b>Live demo.</b> Verified listings come live from each venue's own site on the venue platform: the four sample venues plus any client venues added. <a href="/admin" target="_blank" rel="noopener" style="color:var(--pink)">Change Marea in its editor</a> and watch it update here. Instagram listings are made up for the demo.</div>
     <div class="demo-row"><label for="clock">Time</label><input id="clock" type="range" min="360" max="1740" step="30" value="1260"><span class="clock" id="clockOut">21:00</span><button type="button" id="nowBtn" class="chip" style="height:30px">Now</button></div>
     <div id="feedNote" class="note"></div>
   </div>
@@ -225,7 +225,7 @@ header { padding: 18px 0 6px; }
 
   // Verified listings, live from the venue platform.
   function loadFeed(first) {
-    return fetch('/api/playbook.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (f) {
+    return fetch('/api/playbook-guide.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (f) {
       S.today = f.today;
       if (first) { var t = f.localTime.split(':'); var m = Number(t[0]) * 60 + Number(t[1]); if (m < 360) m += 1440; S.clock = Math.min(1740, Math.max(360, Math.round(m / 30) * 30)); $('#clock').value = S.clock; }
       var v = [];
@@ -236,7 +236,10 @@ header { padding: 18px 0 6px; }
         });
       });
       D = v.concat(IG);
-      $('#feedNote').textContent = v.length + ' verified listings from ' + f.venues.length + ' venues, refreshed ' + f.localTime + '.';
+      var src = f.sources || [], clients = src.slice(1), down = clients.filter(function (x) { return !x.ok; });
+      $('#feedNote').textContent = v.length + ' verified listings from ' + f.venues.length + (f.venues.length === 1 ? ' venue' : ' venues') +
+        (clients.length ? ' (' + (clients.length - down.length) + ' of ' + clients.length + ' client sites answering)' : '') +
+        ', refreshed ' + f.localTime + '.' + (down.length ? ' Not reachable right now: ' + down.map(function (x) { return x.host; }).join(', ') + '.' : '');
       render();
     }).catch(function () { $('#feedNote').textContent = 'Could not reach the venue platform. Showing Instagram listings only.'; render(); });
   }

@@ -12,7 +12,7 @@ const { buildStats } = require('./lib/stats');
 const { preordersNow, remaining, prepList, MODES } = require('./lib/orders');
 const { localNow, addDays } = require('./lib/time');
 const render = require('./lib/render');
-const { buildFeed } = require('./lib/playbook');
+const { buildFeed, guideFeed } = require('./lib/playbook');
 const pitch = require('./lib/pitch');
 const LEADS_PASSWORD = process.env.LEADS_PASSWORD || '';
 
@@ -373,11 +373,20 @@ app.get('/photos/:id', page(async (req, res) => {
 
 // The Ibiza Playbook reads every venue's listings from here. In the demo that
 // is the four sample venues; for a real venue, just its own.
-app.get('/api/playbook.json', page(async (req, res) => {
+async function ownFeed(req) {
   const { data } = await store.getState();
   const states = DEMO ? Object.keys(SAMPLES).map((key) => ({ key, state: overlay(data, key) })) : [{ key: null, state: data }];
+  return buildFeed({ states, base: baseUrl(req) });
+}
+app.get('/api/playbook.json', page(async (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
-  res.json(buildFeed({ states, base: baseUrl(req) }));
+  res.json(await ownFeed(req));
+}));
+// What the guide page reads: this feed plus every client venue's feed
+// (playbook-feeds.json), merged. Client feeds stay their own source of truth.
+app.get('/api/playbook-guide.json', page(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await guideFeed({ own: await ownFeed(req), ownBase: baseUrl(req) }));
 }));
 app.get('/playbook', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, 'public', 'playbook.html')); });
 

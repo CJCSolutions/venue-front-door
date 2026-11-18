@@ -198,3 +198,23 @@ test('menus and what\'s on can be embedded in an existing website', async () => 
   const book = await (await fetch(base + '/book?sample=beach')).text();
   assert.match(book, /Book a table<\/b> on our booking system/);
 });
+
+test('the Playbook guide merges client venue feeds and skips one that is down', async () => {
+  const { guideFeed, _cache } = require('../lib/playbook');
+  _cache.clear();
+  const own = await (await fetch(base + '/api/playbook.json')).json();
+  const client = { today: own.today, localTime: own.localTime, venues: [{ key: 'venue', name: 'Can Real', area: 'Ibiza Town', kind: 'Bar', url: 'https://canreal.example/', listings: [{ id: 'venue:dj', kind: 'event', date: own.today, start: 1260, end: 1500, title: 'DJ night', what: '', tags: ['dj'], action: { label: 'See it', href: 'https://canreal.example/' } }] }] };
+  const fetcher = async (u) => {
+    if (u.startsWith('https://canreal.example')) return { ok: true, json: async () => client };
+    if (u.startsWith('https://dup.example')) return { ok: true, json: async () => ({ ...client }) };
+    throw new Error('connection refused');
+  };
+  const g = await guideFeed({ own, ownBase: base, feeds: ['https://canreal.example/api/playbook.json', 'https://dup.example/api/playbook.json', 'https://down.example/api/playbook.json', base + '/api/playbook.json'], fetcher });
+  assert.strictEqual(g.venues.length, 5); // 4 samples + Can Real once, own feed not read twice
+  const real = g.venues.find((v) => v.name === 'Can Real');
+  assert.strictEqual(real.listings[0].id, 'canreal.example/venue:dj');
+  assert.deepStrictEqual(g.sources.map((s) => s.ok), [true, true, true, false]);
+  const r = await fetch(base + '/api/playbook-guide.json');
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual((await r.json()).venues.length, 4);
+});
