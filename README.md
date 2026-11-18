@@ -37,6 +37,7 @@ The design and page structure are fixed. The venue only edits facts, so it can't
 
 - `/for-venues` is the sales page (English, `?lang=es` for Spanish): the five problems with small mock-ups, the four sample venues, tracking, the module structure, styles, and a contact form. In demo mode every venue page carries a "This is a sample" banner pointing to it.
 - The demo has four sample venues, picked from the bar at the top: Sol (café), Marea (restaurant, the editable one), Lunar (bar and events) and Cala Blanca (beach club). The choice is remembered while browsing.
+- Only Marea is editable; the other three are showcases, and the banner, demo bar, editor login and sales page all say so.
 - Enquiries are stored in the `leads` table and listed at `/leads` (password in `LEADS_PASSWORD`), with a CSV download. Demo resets do not touch leads.
 
 ## Run it locally

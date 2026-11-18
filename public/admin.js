@@ -72,7 +72,7 @@
     api('/api/editor-info').catch(function () { return {}; }).then(function (info) {
       view.innerHTML = '<div class="login"><p class="muted">Venue editor</p><h2>Log in to update your venue</h2>' +
         '<p class="muted">Change an event, the menu or the hours. The website and every touchpoint follow.</p>' +
-        (info.demo ? '<div class="card"><b>Demo password:</b> ' + esc(info.demoPassword) + '<br><span class="muted">This is a public demo. Anyone can edit; reset it under More.</span></div>' : '') +
+        (info.demo ? '<div class="card"><b>Demo password:</b> ' + esc(info.demoPassword) + '<br><span class="muted">This demo edits <b>Marea</b>, the sample restaurant. Sol, Lunar and Cala Blanca are showcases. It is public, so anyone can edit; reset it under More.</span></div>' : '') +
         '<form id="loginForm"><label class="f">Password<input type="password" name="password" autocomplete="current-password" required></label>' +
         '<div id="loginErr"></div><button class="btn dark block" type="submit">Log in</button></form></div>';
       $('#loginForm').addEventListener('submit', function (e) {
