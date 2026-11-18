@@ -738,13 +738,16 @@
     openSheet(head('Links') + '<form id="lkForm"><label class="f">WhatsApp number<input name="whatsapp" value="' + esc(l.whatsapp) + '" placeholder="+34 600 000 000" inputmode="tel"></label>' +
       '<label class="f">Google review link<input name="googleReview" value="' + esc(l.googleReview) + '" placeholder="https://g.page/r/…/review"></label>' +
       '<label class="f">TripAdvisor link<input name="tripadvisor" value="' + esc(l.tripadvisor) + '" placeholder="https://www.tripadvisor.com/…"></label>' +
+      '<label class="f">Your own booking system (optional)<input name="bookingUrl" value="' + esc(l.bookingUrl) + '" placeholder="https:// link to your booking page"></label>' +
+      '<label class="f">Its name<input name="bookingName" value="' + esc(l.bookingName) + '" placeholder="CoverManager, TheFork…" maxlength="40"></label>' +
+      '<p class="muted" style="margin:-4px 0 12px">Keep the booking system you already use. Table bookings on your site go straight to it.</p>' +
       '<label class="f">Order online, takeaway, gift vouchers</label><div id="olList">' + (l.order && l.order.length ? l.order : [{ label: '', url: '' }]).map(ol).join('') + '</div><button type="button" class="btn small" id="olAdd" style="margin-bottom:14px">＋ Add a link</button>' +
       '<div id="lkErr"></div><button class="btn dark block" type="submit">Save</button></form>');
     $('#olAdd').addEventListener('click', function () { $('#olList').insertAdjacentHTML('beforeend', ol({ label: '', url: '' })); });
     $('#lkForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var f = e.target, order = $$('#olList .dj', sheet).map(function (r) { return { label: $('[data-o-label]', r).value, url: $('[data-o-url]', r).value }; });
-      act('links.save', { whatsapp: f.whatsapp.value, googleReview: f.googleReview.value, tripadvisor: f.tripadvisor.value, order: order }).then(function (j) { closeSheet(); toast(j.change.summary); }).catch(function (err) { errBox('#lkErr', err); });
+      act('links.save', { whatsapp: f.whatsapp.value, googleReview: f.googleReview.value, tripadvisor: f.tripadvisor.value, order: order, bookingUrl: f.bookingUrl.value, bookingName: f.bookingName.value }).then(function (j) { closeSheet(); toast(j.change.summary); }).catch(function (err) { errBox('#lkErr', err); });
     });
   }
 

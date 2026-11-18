@@ -176,3 +176,14 @@ test('the Ibiza Playbook reads live listings from the venue platform', async () 
   const home = await (await fetch(base + '/')).text();
   assert.match(home, /Find us on the Ibiza Playbook/);
 });
+
+test('a venue can keep its own booking system', async () => {
+  const cookie = await login();
+  const r = await fetch(base + '/api/admin/action', { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ action: { type: 'links.save', payload: { bookingUrl: 'https://booking.example.com/marea', bookingName: 'CoverManager' } } }) });
+  assert.strictEqual(r.status, 200);
+  const page = await (await fetch(base + '/book?sample=restaurant')).text();
+  assert.match(page, /Book a table<\/b> on CoverManager/);
+  assert.match(page, /https:\/\/booking\.example\.com\/marea/);
+  const bad = await fetch(base + '/api/admin/action', { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ action: { type: 'links.save', payload: { bookingUrl: 'http://insecure.example.com' } } }) });
+  assert.strictEqual(bad.status, 400);
+});
