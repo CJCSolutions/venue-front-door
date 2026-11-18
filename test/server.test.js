@@ -161,3 +161,18 @@ test('the café sample has weekend bakes to collect', async () => {
   assert.match(html, /Weekend bakes/);
   assert.match(html, /Collect between/);
 });
+
+test('the Ibiza Playbook reads live listings from the venue platform', async () => {
+  const feed = await (await fetch(base + '/api/playbook.json')).json();
+  assert.strictEqual(feed.venues.length, 4);
+  const marea = feed.venues.find((v) => v.name === 'Marea');
+  assert.strictEqual(marea.area, 'Sant Antoni');
+  assert.ok(feed.venues.every((v) => Array.isArray(v.listings)));
+  const cafe = feed.venues.find((v) => v.name === 'Sol');
+  assert.ok(cafe.listings.some((l) => l.tags.includes('food')));
+  const page = await fetch(base + '/playbook');
+  assert.strictEqual(page.status, 200);
+  assert.match(await page.text(), /Ibiza <span>Playbook/);
+  const home = await (await fetch(base + '/')).text();
+  assert.match(home, /Find us on the Ibiza Playbook/);
+});

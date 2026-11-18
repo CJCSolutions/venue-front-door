@@ -12,6 +12,7 @@ const { buildStats } = require('./lib/stats');
 const { preordersNow, remaining, prepList, MODES } = require('./lib/orders');
 const { localNow, addDays } = require('./lib/time');
 const render = require('./lib/render');
+const { buildFeed } = require('./lib/playbook');
 const pitch = require('./lib/pitch');
 const LEADS_PASSWORD = process.env.LEADS_PASSWORD || '';
 
@@ -369,6 +370,16 @@ app.get('/photos/:id', page(async (req, res) => {
 }));
 
 // ---------- public API ----------
+
+// The Ibiza Playbook reads every venue's listings from here. In the demo that
+// is the four sample venues; for a real venue, just its own.
+app.get('/api/playbook.json', page(async (req, res) => {
+  const { data } = await store.getState();
+  const states = DEMO ? Object.keys(SAMPLES).map((key) => ({ key, state: overlay(data, key) })) : [{ key: null, state: data }];
+  res.set('Access-Control-Allow-Origin', '*');
+  res.json(buildFeed({ states, base: baseUrl(req) }));
+}));
+app.get('/playbook', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, 'public', 'playbook.html')); });
 
 app.get('/api/version', page(async (req, res) => res.json({ version: await store.version() })));
 app.get('/healthz', (req, res) => res.json({ ok: ready, storage: store.kind }));

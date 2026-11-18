@@ -299,3 +299,4 @@ h1 { font-size: var(--hero-size); line-height: var(--hero-line); margin: 12px 0 
 .po-sum { list-style: none; padding: 0; margin: 12px 0; }
 .po-sum li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
 .po-sum .tot { border-top: 1px solid currentColor; margin-top: 4px; padding-top: 8px; font-weight: 700; }
+.pb-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 99px; border: 1px solid currentColor; text-decoration: none; }
