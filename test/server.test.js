@@ -9,9 +9,11 @@ process.env.DATA_FILE = path.join(os.tmpdir(), `vfd-test-${process.pid}.json`);
 process.env.ADMIN_PASSWORD = 'test-pass';
 process.env.LEADS_PASSWORD = 'leads-pass';
 process.env.DEMO_MODE = '1';
+process.env.ALERT_EMAIL = 'alerts@example.com';
 delete process.env.DB_NAME;
 
 const { app } = require('../app');
+const notify = require('../lib/notify');
 
 let server, base;
 test.before(async () => {
@@ -282,4 +284,112 @@ test('weekly Listed entries run on the same weekday for eight weeks', () => {
   assert.ok(!runsOn(l, '2026-11-27'));
   assert.ok(!runsOn(l, '2027-01-16'));
   assert.ok(runsOn({ weekly: false, date: '2026-11-21' }, '2026-11-21'));
+});
+
+let cached = null;
+async function session() { return cached || (cached = await login()); }
+async function adminAction(cookie, type, payload) {
+  const r = await fetch(base + '/api/admin/action', { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ action: { type, payload } }) });
+  return { status: r.status, body: await r.json() };
+}
+const post = (url, data) => fetch(base + url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(data).toString() });
+
+test('a guest books a table and it is confirmed straight away', async () => {
+  const cookie = await session();
+  await adminAction(cookie, 'links.save', { bookingUrl: '', bookingName: '' });
+  assert.strictEqual((await adminAction(cookie, 'tables.save', { times: '13:00 13:30 20:00 20:30', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto' })).status, 200);
+  const page = await (await fetch(base + '/book')).text();
+  assert.match(page, /Book the table/);
+  const date = /<option value="(\d{4}-\d{2}-\d{2})" selected>/.exec(page)[1];
+  const time = /name="time" value="(\d\d:\d\d)"\s+checked/.exec(page)[1];
+  const before = notify.sent.length;
+  const r = await post('/book/table', { date, time, guests: '3', name: 'Ana', contact: 'ana@example.com', note: 'Window please' });
+  assert.strictEqual(r.status, 200);
+  assert.match(await r.text(), /Booked, Ana\./);
+  assert.ok(notify.sent.length > before, 'the venue gets an alert');
+  assert.match(notify.sent[notify.sent.length - 1].subject, /New booking: 3 at/);
+  // Only one place left at that time now.
+  const full = await post('/book/table', { date, time, guests: '2', name: 'Ben', contact: '+34 600 111 222' });
+  assert.strictEqual(full.status, 409);
+  assert.match(await full.text(), /Only 1 place left/);
+  const tooBig = await post('/book/table', { date, time, guests: '9', name: 'Big', contact: '600111222' });
+  assert.strictEqual(tooBig.status, 400);
+});
+
+test('with manual confirming, the venue confirms and the guest gets a WhatsApp message ready', async () => {
+  const cookie = await session();
+  await adminAction(cookie, 'tables.save', { times: '13:00 13:30 20:00 20:30', covers: 10, maxParty: 8, notice: 0, daysAhead: 30, mode: 'manual' });
+  const page = await (await fetch(base + '/book')).text();
+  assert.match(page, /Request this table/);
+  const dates = [...page.matchAll(/<option value="(\d{4}-\d{2}-\d{2})"/g)].map((m) => m[1]);
+  const date = dates[dates.length - 1];
+  const p2 = await (await fetch(base + '/book?date=' + date)).text();
+  const time = /name="time" value="(\d\d:\d\d)"\s+checked/.exec(p2)[1];
+  const r = await post('/book/table', { date, time, guests: '2', name: 'Carla', contact: '600 222 333' });
+  assert.match(await r.text(), /will confirm by WhatsApp or phone/);
+  const state = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
+  const res = state.reservations.find((x) => x.name === 'Carla');
+  assert.strictEqual(res.status, 'pending');
+  const pulse = await (await fetch(base + '/api/admin/pulse', { headers: { cookie } })).json();
+  assert.ok(pulse.waiting >= 1);
+  const ok = await (await fetch(base + '/api/admin/reservations/' + res.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ status: 'confirmed' }) })).json();
+  assert.ok(ok.ok);
+  assert.match(ok.whatsapp, /^https:\/\/wa\.me\/34600222333\?text=/);
+  const bad = await fetch(base + '/api/admin/reservations/' + res.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ status: 'eaten' }) });
+  assert.strictEqual(bad.status, 400);
+});
+
+test('a guest orders ahead to collect and it lands in the orders inbox', async () => {
+  const cookie = await session();
+  await adminAction(cookie, 'hours.day', { mode: 'custom', slot: { open: '00:00', close: '23:59' } });
+  assert.strictEqual((await adminAction(cookie, 'collect.save', { open: true, from: '00:00', to: '23:50', every: 10, notice: 0 })).status, 200);
+  const page = await (await fetch(base + '/collect')).text();
+  assert.match(page, /Order to collect/);
+  const slot = /<select name="slot" required><option[^>]*>(\d\d:\d\d)</.exec(page);
+  if (!slot) return assert.match(page, /closed/); // run in the last minutes of the day
+  const item = [...page.matchAll(/name="qty_([\w-]+)" data-price="([\d.]+)"/g)].pop(); // the all-day drinks menu comes last
+  const r = await post('/collect', { ['qty_' + item[1]]: '2', slot: slot[1], name: 'Dani', contact: '600333444' });
+  assert.strictEqual(r.status, 200);
+  assert.match(await r.text(), /Order in, Dani\./);
+  const state = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
+  const o = state.orders.find((x) => x.name === 'Dani');
+  assert.strictEqual(o.preorder_id, 'collect');
+  assert.strictEqual(o.total, Math.round(2 * Number(item[2]) * 100) / 100);
+  const none = await post('/collect', { slot: slot[1], name: 'Eve', contact: '600' });
+  assert.strictEqual(none.status, 400);
+  await adminAction(cookie, 'collect.save', { open: false, from: '12:00', to: '22:00', every: 15, notice: 30 });
+  assert.match(await (await fetch(base + '/collect')).text(), /not taking orders online/);
+});
+
+test('settings reject bad input', async () => {
+  const cookie = await session();
+  assert.strictEqual((await adminAction(cookie, 'tables.save', { times: '25:00', covers: 4, maxParty: 4, notice: 0, daysAhead: 30 })).status, 400);
+  assert.strictEqual((await adminAction(cookie, 'alerts.save', { email: 'not-an-email' })).status, 400);
+  assert.strictEqual((await adminAction(cookie, 'alerts.save', { email: 'kitchen@marea.example' })).status, 200);
+});
+
+test('table bookings stay off until the venue saves its own times', () => {
+  const R = require('../lib/reservations');
+  const state = { venue: { modules: { tables: true }, timezone: 'Europe/Madrid' }, links: {} };
+  assert.strictEqual(R.tablesOn(state), false);
+  assert.strictEqual(R.tablesOn({ ...state, tableBooking: { times: ['20:00'] } }), true);
+  assert.strictEqual(R.tablesOn({ ...state, tableBooking: { times: ['20:00'] }, links: { bookingUrl: 'https://x.example' } }), false);
+  assert.strictEqual(R.looksLikeEmail('"x"<victim@evil.example>'), false);
+  assert.strictEqual(R.looksLikeEmail('ana@example.com'), true);
+});
+
+test('booking times after midnight are refused, phone bookings count against covers', async () => {
+  const cookie = await session();
+  const late = await adminAction(cookie, 'tables.save', { times: '22:00 00:30', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto' });
+  assert.strictEqual(late.status, 400);
+  assert.match(late.body.error, /after midnight/);
+  await adminAction(cookie, 'tables.save', { times: '13:00 20:00', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto' });
+  const state = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
+  const date = require('../lib/time').addDays(state.localToday, 20);
+  const add = (guests, force) => fetch(base + '/api/admin/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ date, time: '20:00', guests, name: 'Phone guest', force }) });
+  assert.strictEqual((await add(3)).status, 200);
+  assert.strictEqual((await add(2)).status, 409);
+  assert.strictEqual((await add(2, true)).status, 200);
+  const page = await (await fetch(base + '/book?date=' + date)).text();
+  assert.match(page, /20:00 · full/);
 });

@@ -156,6 +156,8 @@ h1 { font-size: var(--hero-size); line-height: var(--hero-line); margin: 12px 0 
 .types legend { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
 .types label { display: inline-flex; grid-auto-flow: column; align-items: center; gap: 8px; border: 2px solid var(--text); border-radius: 99px; padding: 0 16px; min-height: 46px; cursor: pointer; }
 .types input { min-height: 0; width: 18px; height: 18px; accent-color: var(--accent); }
+.types label.full { opacity: .45; cursor: not-allowed; text-decoration: line-through; }
+.times label:has(input:checked) { background: var(--accent); color: var(--accent-ink, #fff); border-color: var(--accent); }
 .hp { position: absolute; left: -9999px; }
 .notice { padding: 16px 18px; border-radius: 12px; margin-bottom: 16px; }
 .notice.ok { background: #e6f4ea; color: #1d5a32; }
