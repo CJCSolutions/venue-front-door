@@ -103,7 +103,7 @@ test('use cases switch modules and home order; core modules stay on', () => {
   state = applyAction(state, { type: 'preset.set', payload: { type: 'cafe' } }).state;
   assert.strictEqual(state.venue.modules.events, false);
   assert.strictEqual(state.venue.modules.menu, true);
-  assert.deepStrictEqual(homeSections(state.venue).slice(0, 3), ['hero', 'menu', 'offers']);
+  assert.deepStrictEqual(homeSections(state.venue).slice(0, 3), ['hero', 'menu', 'preorder']);
   assert.throws(() => applyAction(state, { type: 'module.toggle', payload: { module: 'hours' } }), /always on/);
   state = applyAction(state, { type: 'module.toggle', payload: { module: 'events' } }).state;
   assert.strictEqual(homeSections(state.venue).at(-1), 'events', 'a module switched on joins the end of the home page');

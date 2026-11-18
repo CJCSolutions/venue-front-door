@@ -276,3 +276,26 @@ h1 { font-size: var(--hero-size); line-height: var(--hero-line); margin: 12px 0 
 .pulse-banner a { margin-left: auto; background: #c6ff3d; color: #121212; border-radius: 99px; padding: 9px 16px; font-weight: 700; text-decoration: none; white-space: nowrap; }
 
 @media (max-width: 720px) { .pulse-banner a { margin-left: 0; } }
+
+/* Pre-orders */
+.po-card { text-decoration: none; color: inherit; }
+.po-modes { font-size: 14px; color: var(--muted); }
+.po-btn { align-self: flex-start; margin-top: 6px; min-height: 40px; }
+.po-form fieldset { border: 0; padding: 0; margin: 0; }
+.po-form legend { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+.po-day { display: inline-flex; flex-direction: column; justify-content: center; border: 2px solid var(--text); border-radius: 14px; padding: 8px 16px; min-height: 52px; text-decoration: none; color: var(--text); font-weight: 600; }
+.po-day small { font-weight: 400; font-size: 12px; color: var(--muted); }
+.po-day.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.po-day.on small { color: inherit; opacity: .8; }
+.po-items { list-style: none; margin: 0; padding: 0; }
+.po-items li { display: grid; grid-template-columns: 1fr auto 76px; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.po-items li div { display: flex; flex-direction: column; gap: 2px; }
+.po-items li div span { font-size: 14px; color: var(--muted); }
+.po-items li .left { color: var(--price); font-weight: 600; }
+.po-items .price { font-weight: 600; color: var(--price); }
+.po-items input { width: 76px; text-align: center; }
+.po-items .sold { font-size: 13px; text-align: center; color: var(--muted); }
+.po-items li.out b { opacity: .5; }
+.po-sum { list-style: none; padding: 0; margin: 12px 0; }
+.po-sum li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
+.po-sum .tot { border-top: 1px solid currentColor; margin-top: 4px; padding-top: 8px; font-weight: 700; }

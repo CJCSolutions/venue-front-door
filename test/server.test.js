@@ -129,3 +129,35 @@ test('the four sample venues each show their own content', async () => {
   const beach = await (await fetch(base + '/?sample=beach')).text();
   assert.match(beach, /Cala Blanca/);
 });
+
+test('pre-orders take an order, respect limits and reach the kitchen list', async () => {
+  const page = await fetch(base + '/order/po-roast?sample=restaurant');
+  assert.strictEqual(page.status, 200);
+  const html = await page.text();
+  assert.match(html, /Sunday roast/);
+  const date = /name="date" value="(\d{4}-\d{2}-\d{2})"/.exec(html)[1];
+  const post = (fields) => fetch(base + '/order/po-roast', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ date, slot: '13:30', mode: 'takeaway', name: 'Test', contact: 'test@example.com', ...fields }) });
+  const ok = await post({ 'qty_pr-beef': '2', 'qty_pr-pud': '1', src: 'whatsapp' });
+  assert.strictEqual(ok.status, 200);
+  assert.match(await ok.text(), /Order in, Test[\s\S]*€55/);
+  const none = await post({});
+  assert.strictEqual(none.status, 400);
+  const tooMany = await post({ 'qty_pr-nut': '13' });
+  assert.strictEqual(tooMany.status, 409);
+  const cookie = await login();
+  const st = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
+  const mine = st.orders.find((o) => o.name === 'Test');
+  assert.ok(mine && mine.source === 'whatsapp');
+  const g = st.prep.find((x) => x.date === date);
+  assert.ok(g.items['Roast beef'] >= 2);
+  const r = await fetch(base + '/api/admin/orders/' + mine.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ status: 'ready' }) });
+  assert.strictEqual(r.status, 200);
+});
+
+test('the café sample has weekend bakes to collect', async () => {
+  const r = await fetch(base + '/order/po-bakes?sample=cafe');
+  assert.strictEqual(r.status, 200);
+  const html = await r.text();
+  assert.match(html, /Weekend bakes/);
+  assert.match(html, /Collect between/);
+});

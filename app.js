@@ -9,6 +9,7 @@ const { PRESETS, MODULES, SECTIONS } = require('./lib/presets');
 const { SAMPLES, overlay } = require('./lib/samples');
 const { applyAction, ActionError, LOOKS } = require('./lib/actions');
 const { buildStats } = require('./lib/stats');
+const { preordersNow, remaining, prepList, MODES } = require('./lib/orders');
 const { localNow, addDays } = require('./lib/time');
 const render = require('./lib/render');
 const pitch = require('./lib/pitch');
@@ -69,7 +70,8 @@ async function context(req, extra = {}) {
   return {
     state: data, version, look, demo: DEMO, sample: choice.sample || null, path: req.originalUrl, member, counts,
     schedule: buildSchedule(data, new Date(), { member: Boolean(member) }), status: openStatus(data),
-    menus: data.venue.modules.menu ? menusNow(data) : [], offers: data.venue.modules.offers ? offersNow(data) : [], L: labels(data), baseUrl: baseUrl(req)
+    menus: data.venue.modules.menu ? menusNow(data) : [], offers: data.venue.modules.offers ? offersNow(data) : [],
+    preorders: data.venue.modules.preorder ? preordersNow(data) : [], L: labels(data), baseUrl: baseUrl(req)
   };
 }
 
@@ -96,6 +98,7 @@ function limited(key, max, windowMs) {
   return list.length > max;
 }
 
+const enc = encodeURIComponent;
 const cleanSrc = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 20);
 
 // Where a visit came from: the ?src= tag on shared links, else the referrer.
@@ -161,6 +164,32 @@ app.get('/book', page(async (req, res) => {
   countVisit(req);
   res.send(render.bookPage(await context(req, { res }), { values: { src: cleanSrc(req.query.src), type: ['table', 'private', 'other'].includes(req.query.type) ? req.query.type : '' } }));
 }));
+// Pre-orders: weekend bakes, a Sunday roast. One page per pre-order.
+app.get('/order', page(async (req, res) => {
+  countVisit(req);
+  const ctx = await context(req, { res });
+  if (!ctx.state.venue.modules.preorder || !ctx.preorders.length) return res.status(404).send(render.notFoundPage(ctx));
+  if (ctx.preorders.length === 1) return res.redirect(302, `/order/${enc(ctx.preorders[0].id)}${req.query.src ? `?src=${enc(cleanSrc(req.query.src))}` : ''}`);
+  res.send(render.ordersPage(ctx));
+}));
+
+async function orderCtx(req, res) {
+  const ctx = await context(req, { res });
+  const po = ctx.state.venue.modules.preorder ? ctx.preorders.find((x) => x.id === req.params.id) : null;
+  if (!po) return { ctx };
+  const wanted = (req.body && req.body.date) || req.query.date;
+  const chosen = po.dates.find((x) => x.date === wanted) || po.dates[0] || null;
+  const left = chosen ? remaining(po, await store.takenFor(po.id, chosen.date)) : {};
+  return { ctx, po, chosen, left };
+}
+
+app.get('/order/:id', page(async (req, res) => {
+  countVisit(req);
+  const { ctx, po, chosen, left } = await orderCtx(req, res);
+  if (!po) return res.status(404).send(render.notFoundPage(ctx));
+  res.send(render.orderPage(ctx, po, chosen, left, { values: { src: cleanSrc(req.query.src) } }));
+}));
+
 app.get('/night/:key', (req, res) => res.redirect(301, `/event/${encodeURIComponent(req.params.key)}`));
 
 app.get('/event/:key', page(async (req, res) => {
@@ -192,6 +221,38 @@ app.post('/event/:key', form, page(async (req, res) => {
   if (result.full) return again(409, result.left ? `Only ${result.left} ${result.left > 1 ? 'places' : 'place'} left.` : 'Sorry, that just filled up.');
   ctx.counts = await store.bookedCounts();
   res.send(render.eventPage(ctx, o, { sent: { name: values.name, guests: values.guests } }));
+}));
+
+app.post('/order/:id', form, page(async (req, res) => {
+  const { ctx, po, chosen, left } = await orderCtx(req, res);
+  if (!po) return res.status(404).send(render.notFoundPage(ctx));
+  const b = req.body || {};
+  const qty = {};
+  for (const it of po.items) { const n = parseInt(b['qty_' + it.id], 10); if (n > 0) qty[it.id] = n; }
+  const values = {
+    name: String(b.name || '').trim().slice(0, 80), contact: String(b.contact || '').trim().slice(0, 120),
+    note: String(b.note || '').trim().slice(0, 300), slot: String(b.slot || ''), mode: String(b.mode || ''), qty, src: cleanSrc(b.src)
+  };
+  const again = (status, error) => res.status(status).send(render.orderPage(ctx, po, chosen, left, { error, values }));
+  if (b.website) return res.send(render.orderPage(ctx, po, chosen, left, { sent: { name: values.name } }));
+  if (!chosen || chosen.date !== b.date) return again(400, 'Orders for that day have closed. Pick another day.');
+  if (limited('order:' + req.ip, 8, 10 * 60 * 1000)) return again(429, 'Too many orders. Please try again in a few minutes.');
+  const items = po.items.filter((it) => qty[it.id]).map((it) => ({ id: it.id, name: it.name, qty: Math.min(qty[it.id], 50), price: it.price }));
+  if (!items.length) return again(400, 'Add at least one item.');
+  if (!po.slots.includes(values.slot)) return again(400, 'Pick a time.');
+  if (!po.modes.includes(values.mode)) return again(400, `Pick ${po.modes.map((m) => MODES[m].toLowerCase()).join(' or ')}.`);
+  if (!values.name || !values.contact) return again(400, 'Please add your name and a phone number or email.');
+  const limits = Object.fromEntries(po.items.map((it) => [it.id, it.soldOut ? 0 : it.limit]));
+  const total = Math.round(items.reduce((t, i) => t + i.qty * i.price, 0) * 100) / 100;
+  const result = await store.addOrder({
+    preorder_id: po.id, preorder_name: po.name.slice(0, 80), date: chosen.date, slot: values.slot, mode: values.mode,
+    name: values.name, contact: values.contact, items, total, note: values.note, source: values.src || (ctx.member ? 'circle' : 'direct')
+  }, limits);
+  if (result.short) {
+    const fresh = remaining(po, await store.takenFor(po.id, chosen.date));
+    return res.status(409).send(render.orderPage(ctx, po, chosen, fresh, { error: result.short.left ? `Only ${result.short.left} ${result.short.name} left for that day.` : `${result.short.name} has sold out for that day.`, values }));
+  }
+  res.send(render.orderPage(ctx, po, chosen, left, { sent: { name: values.name, items, total, slot: values.slot, mode: values.mode, date: chosen.date } }));
 }));
 
 app.post('/book', form, page(async (req, res) => {
@@ -331,16 +392,18 @@ app.post('/api/logout', (req, res) => { res.set('Set-Cookie', 'vfd_session=; Htt
 app.get('/api/editor-info', (req, res) => res.json({ demo: DEMO, demoPassword: DEMO ? ADMIN_PASSWORD : null, loggedIn: isEditor(req) }));
 
 app.get('/api/admin/state', requireAdmin, page(async (req, res) => {
-  const [{ data, version }, changes, enquiries, bookings, members] = await Promise.all([
-    store.getState(), store.listChanges(10), store.listEnquiries(100), store.listBookings(500), store.listMembers(1000)
+  let [{ data, version }, changes, enquiries, bookings, members, orders] = await Promise.all([
+    store.getState(), store.listChanges(10), store.listEnquiries(100), store.listBookings(500), store.listMembers(1000), store.listOrders(300)
   ]);
   const schedule = buildSchedule(data, new Date(), { editor: true });
+  const poIds = (data.preorders || []).map((x) => x.id);
+  orders = orders.filter((o) => poIds.includes(o.preorder_id));
   const views = await store.listViews(addDays(schedule.today, -30));
   const counts = await store.bookedCounts();
   res.json({
     state: data, version, schedule, status: openStatus(data), menus: menusNow(data), labels: labels(data),
-    changes, enquiries, bookings, members, counts,
-    stats: buildStats({ state: data, schedule, bookings, members, views, enquiries }),
+    changes, enquiries, bookings, members, counts, orders, prep: prepList(orders, schedule.today), preorders: preordersNow(data),
+    stats: buildStats({ state: data, schedule, bookings, members, views, enquiries, orders }),
     baseUrl: baseUrl(req), demo: DEMO, offers: offersNow(data),
     catalog: { modules: MODULES, sections: SECTIONS, presets: PRESETS }
   });
@@ -383,6 +446,13 @@ app.patch('/api/admin/bookings/:id', requireAdmin, express.json({ limit: '4kb' }
   const status = (req.body || {}).status;
   if (!['confirmed', 'arrived', 'cancelled', 'no-show'].includes(status)) return res.status(400).json({ error: 'Unknown status' });
   await store.setBookingStatus(Number(req.params.id), status);
+  res.json({ ok: true });
+}));
+
+app.patch('/api/admin/orders/:id', requireAdmin, express.json({ limit: '4kb' }), page(async (req, res) => {
+  const status = (req.body || {}).status;
+  if (!['new', 'ready', 'collected', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Unknown status' });
+  await store.setOrderStatus(Number(req.params.id), status);
   res.json({ ok: true });
 }));
 

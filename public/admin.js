@@ -47,10 +47,11 @@
       document.getElementById('title').textContent = j.state.venue.name;
       if (!S.menuId || !j.state.menus.some(function (m) { return m.id === S.menuId; })) S.menuId = j.state.menus[0] ? j.state.menus[0].id : null;
       var Mo = j.state.venue.modules;
-      var vis = { events: Mo.events, menu: Mo.menu || Mo.offers, inbox: Mo.tables || Mo.hire || Mo.bookings, circle: Mo.circle };
+      var vis = { events: Mo.events, menu: Mo.menu || Mo.offers || Mo.preorder, inbox: Mo.tables || Mo.hire || Mo.bookings || Mo.preorder, circle: Mo.circle };
       Object.keys(vis).forEach(function (k) { tabs.querySelector('[data-tab="' + k + '"]').classList.toggle('hidden', !vis[k]); });
       if (vis[S.tab] === false) S.tab = 'today';
-      var waiting = j.enquiries.filter(function (e) { return e.status === 'new'; }).length;
+      var waiting = j.enquiries.filter(function (e) { return e.status === 'new'; }).length + (Mo.preorder ? j.orders.filter(function (o) { return o.status === 'new' && o.date >= j.schedule.today; }).length : 0);
+      if (S.inbox === 'bookings' && !Mo.bookings && Mo.preorder) S.inbox = 'orders';
       var btn = tabs.querySelector('[data-tab="inbox"]'), badge = btn.querySelector('.badge');
       if (waiting) { if (!badge) { badge = document.createElement('i'); badge.className = 'badge'; btn.appendChild(badge); } badge.textContent = waiting; }
       else if (badge) badge.remove();
@@ -125,6 +126,7 @@
       (v.modules.stories ? '<button data-go="story"><span>◐</span><span>Post a story' + (live.length ? ' <small>(' + live.length + ' live)</small>' : '') + '</span></button>' : '') +
       (v.modules.menu ? '<button data-go="menu"><span>≡</span><span>Edit menu</span></button>' : '') +
       '<button data-go="closetoday"><span>✕</span><span>' + (st.special && !st.today ? 'Open today after all' : 'Close today') + '</span></button></div>';
+    if (v.modules.preorder && j.prep.length) html += '<h3>Pre-orders to make</h3>' + j.prep.slice(0, 2).map(prepCard).join('');
     if (S.lastChange) html += '<h3>Your last change</h3>' + touchpointsHtml(S.lastChange);
     html += '<h3>Coming up</h3>' + sc.upcoming.slice(0, 6).map(function (o) {
       return '<div class="row">' + dateBox(o.date) + '<div class="grow"><b>' + esc(o.name) + '</b><span class="muted">' + (o.circleFirst ? 'Circle first · ' : '') + (bookedLine(o) || (o.repeat !== 'none' ? 'Repeats ' + o.repeat : 'One-off')) + (o.photo ? '' : ' · no photo') + '</span></div><button class="btn small" data-share="' + esc(o.key) + '">Share</button></div>';
@@ -173,6 +175,7 @@
         return '<div class="row"><div class="grow"><b>' + esc(o.name) + '</b>' + (o.active ? ' <span class="pill ok">On now</span>' : '') + '<span class="muted">' + esc(o.days.map(function (k) { return DAY_NAME[k]; }).join(', ')) + ' · ' + esc(o.from) + '–' + esc(o.to) + '</span></div><button class="btn small" data-edit-offer="' + esc(o.id) + '">Edit</button></div>';
       }).join('') + '<button class="btn small" style="margin:10px 0 18px" data-go="newoffer">＋ Add an offer</button>';
     }
+    if (V().modules.preorder) html += preorderSection();
     if (!V().modules.menu) { view.innerHTML = html; return; }
     html += '<h2>Menus</h2><div class="chips">' + menus.map(function (x) {
       return '<button data-menu="' + esc(x.id) + '" class="' + (x.id === S.menuId ? 'on' : '') + '">' + esc(x.name) + (active.indexOf(x.id) >= 0 ? ' •' : '') + '</button>';
@@ -198,8 +201,14 @@
   // ---------- Inbox ----------
   function viewInbox() {
     var j = S.data;
-    var html = '<h2>Inbox</h2><div class="chips"><button data-inbox="bookings" class="' + (S.inbox === 'bookings' ? 'on' : '') + '">Event bookings</button><button data-inbox="requests" class="' + (S.inbox === 'requests' ? 'on' : '') + '">Table & hire requests</button></div>';
-    if (S.inbox === 'bookings') {
+    var Mo = V().modules;
+    var html = '<h2>Inbox</h2><div class="chips">' +
+      (Mo.bookings ? '<button data-inbox="bookings" class="' + (S.inbox === 'bookings' ? 'on' : '') + '">Event bookings</button>' : '') +
+      (Mo.preorder ? '<button data-inbox="orders" class="' + (S.inbox === 'orders' ? 'on' : '') + '">Pre-orders</button>' : '') +
+      '<button data-inbox="requests" class="' + (S.inbox === 'requests' ? 'on' : '') + '">Table & hire requests</button></div>';
+    if (S.inbox === 'orders') {
+      html += ordersInbox();
+    } else if (S.inbox === 'bookings') {
       var upcoming = allUpcoming().filter(function (o) { return o.bookable; });
       html += upcoming.length ? upcoming.slice(0, 12).map(function (o) {
         var list = j.bookings.filter(function (b) { return b.event_key === o.key; });
@@ -256,7 +265,8 @@
     view.innerHTML = '<h2>Stats</h2><p class="muted">Last 30 days. Takings and costs come from the results you add for each date.</p>' +
       '<div class="tiles">' +
       tile(h.visits.toLocaleString('en'), 'website visits') + tile(h.bookings, 'event bookings') + tile(h.guests, 'guests booked') + tile(h.members, 'Circle members') +
-      tile(euro(h.revenue), 'event takings') + tile(euro(h.profit), 'event profit') + '</div>' +
+      tile(euro(h.revenue), 'event takings') + tile(euro(h.profit), 'event profit') +
+      (V().modules.preorder ? tile(h.orders, 'pre-orders') + tile(euro(h.orderValue), 'pre-order value') : '') + '</div>' +
       '<h3>Visits, last 14 days</h3><div class="spark">' + st.days.map(function (x) { var dd = d(x.day); return '<div title="' + esc(shortDate(x.day)) + ': ' + x.views + '"><b style="height:' + Math.max(3, Math.round(x.views / maxV * 100)) + '%"></b><span>' + EN_D[dd.getUTCDay()][0] + '</span></div>'; }).join('') + '</div>' +
       '<h3>Which ' + esc(L().events.toLowerCase()) + ' earn their place</h3>' +
       (st.ranking.length ? '<table class="tbl"><thead><tr><th>' + esc(L().event) + '</th><th>Avg takings</th><th>Avg profit</th><th>Per hour</th></tr></thead><tbody>' +
@@ -264,6 +274,7 @@
         : '<p class="muted">Add results to past dates to see this.</p>') +
       '<h3>Where visits come from</h3><div class="card">' + bars(st.visitSources) + '</div>' +
       '<h3>Where bookings come from</h3><div class="card">' + bars(st.bookingSources) + '</div>' +
+      (V().modules.preorder ? '<h3>Where pre-orders come from</h3><div class="card">' + bars(st.orderSources) + '</div>' : '') +
       '<h3>Date by date</h3>' + st.events.slice(0, 20).map(function (r) {
         return '<div class="row">' + dateBox(r.date) + '<div class="grow"><b>' + esc(r.name) + '</b><span class="muted">' +
           (r.capacity ? r.guests + '/' + r.capacity + ' booked · ' : r.guests ? r.guests + ' booked · ' : '') +
@@ -336,6 +347,96 @@
   function venuePayload(extra) {
     var v = V();
     return Object.assign({ name: v.name, tagline: v.tagline, address: v.address, phone: v.phone, email: v.email, instagram: v.instagram, googleProfileUrl: v.googleProfileUrl }, extra);
+  }
+
+  // ---------- Pre-orders ----------
+  var MODE_NAME = { sitin: 'Eat in', takeaway: 'Take away', collect: 'Collect' };
+  function findPo(id) { return (S.data.state.preorders || []).find(function (x) { return x.id === id; }); }
+  function nowPo(id) { return (S.data.preorders || []).find(function (x) { return x.id === id; }); }
+
+  function prepCard(g) {
+    var items = Object.keys(g.items).map(function (k) { return [k, g.items[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
+    return '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>' + esc(g.name) + '</b><span class="pill plain">' + esc(shortDate(g.date)) + '</span></div>' +
+      '<div class="muted">' + g.orders + ' orders · ' + euro(g.total) + ' · ' + Object.keys(g.modes).map(function (m) { return g.modes[m] + ' ' + MODE_NAME[m].toLowerCase(); }).join(', ') + '</div>' +
+      items.map(function (x) { return '<div class="row"><div class="grow">' + esc(x[0]) + '</div><b style="font-size:20px">' + x[1] + '</b></div>'; }).join('') +
+      '<div class="btnrow"><button class="btn small" data-go-orders>See the orders</button></div></div>';
+  }
+
+  function preorderSection() {
+    var list = S.data.state.preorders || [];
+    return '<h2>Pre-orders</h2><p class="muted">Guests order ahead for set days. Limits stop you taking more than you can make.</p>' + list.map(function (po) {
+      var n = nowPo(po.id), next = n && n.dates[0];
+      return '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><b style="font-size:18px">' + esc(po.name) + '</b>' + (po.open ? ' <span class="pill ok">Taking orders</span>' : ' <span class="pill plain">Paused</span>') +
+        '<div class="muted">' + esc(po.days.map(function (k) { return DAY_NAME[k]; }).join(', ')) + ' · ' + esc(po.from) + '–' + esc(po.to) + ' · ' + esc(po.modes.map(function (m) { return MODE_NAME[m]; }).join(' or ')) + '</div>' +
+        '<div class="muted">' + (next ? 'Next: ' + esc(shortDate(next.date)) + ', orders close ' + esc(shortDate(next.cutoff.date)) + ' ' + esc(next.cutoff.time) : 'No open dates') + '</div></div></div>' +
+        '<div class="btnrow"><button class="btn small" data-po-edit="' + esc(po.id) + '">Days & times</button><button class="btn small" data-po-open="' + esc(po.id) + '">' + (po.open ? 'Pause' : 'Start taking orders') + '</button>' +
+        '<button class="btn small" data-copy="' + esc(S.data.baseUrl + '/order/' + encodeURIComponent(po.id) + '?src=whatsapp') + '">Copy order link</button></div>' +
+        po.items.map(function (it) {
+          return '<div class="row item"><div class="grow"><b class="tap" data-po-item="' + esc(po.id) + '|' + esc(it.id) + '">' + esc(it.name) + '</b><span class="muted">' + euro(it.price) + (it.limit != null ? ' · up to ' + it.limit + ' a day' : ' · no limit') + '</span></div>' +
+            '<button class="toggle ' + (it.soldOut ? 'off' : 'on') + '" data-po-sold="' + esc(po.id) + '|' + esc(it.id) + '">' + (it.soldOut ? 'Sold out' : 'On') + '</button></div>';
+        }).join('') +
+        '<button class="btn small" style="margin:10px 0 0" data-po-item="' + esc(po.id) + '|">＋ Add an item</button></div>';
+    }).join('') + '<button class="btn small" style="margin:6px 0 18px" data-po-edit="">＋ New pre-order</button>';
+  }
+
+  function ordersInbox() {
+    var j = S.data, today = j.schedule.today;
+    var coming = j.orders.filter(function (o) { return o.date >= today; });
+    if (!coming.length) return '<div class="card">No pre-orders coming up. Copy the order link from the Menu tab and share it.</div>';
+    var groups = {};
+    coming.forEach(function (o) { var k = o.preorder_id + '@' + o.date; (groups[k] = groups[k] || []).push(o); });
+    return Object.keys(groups).sort(function (a, b) { return a.split('@')[1].localeCompare(b.split('@')[1]); }).map(function (k) {
+      var list = groups[k].slice().sort(function (a, b) { return a.slot.localeCompare(b.slot); });
+      return '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>' + esc(list[0].preorder_name) + '</b><span class="pill plain">' + esc(shortDate(list[0].date)) + '</span></div>' +
+        list.map(function (o) {
+          return '<div class="row" style="align-items:flex-start"><div class="grow"><b>' + esc(o.slot) + ' · ' + esc(o.name) + '</b> <span class="pill ' + (o.mode === 'sitin' ? 'plain' : 'warn') + '">' + esc(MODE_NAME[o.mode]) + '</span>' +
+            '<div class="muted">' + esc(o.items.map(function (i) { return i.qty + ' × ' + i.name; }).join(', ')) + ' · ' + euro(o.total) + '</div>' +
+            '<div class="muted"><a href="' + (o.contact.indexOf('@') > 0 ? 'mailto:' : 'tel:') + esc(o.contact.replace(/\s/g, '')) + '">' + esc(o.contact) + '</a> · ' + esc(o.source || 'direct') + '</div>' +
+            (o.note ? '<div class="muted">“' + esc(o.note) + '”</div>' : '') + '</div>' +
+            '<select data-order="' + o.id + '" aria-label="Order status">' + ['new', 'ready', 'collected', 'cancelled'].map(function (st) { return '<option ' + (o.status === st ? 'selected' : '') + '>' + st + '</option>'; }).join('') + '</select></div>';
+        }).join('') + '</div>';
+    }).join('');
+  }
+
+  function poSheet(po) {
+    var x = po || { name: '', blurb: '', days: ['sun'], from: '13:00', to: '16:00', every: 30, cutoffDays: 1, cutoffTime: '20:00', modes: ['sitin', 'takeaway'] };
+    openSheet(head(po ? 'Days & times' : 'New pre-order') + '<form id="poForm"><label class="f">Name<input name="name" required maxlength="60" value="' + esc(x.name) + '" placeholder="Sunday roast, Weekend bakes"></label>' +
+      '<label class="f">Description<textarea name="blurb" rows="2" maxlength="280">' + esc(x.blurb) + '</textarea></label>' +
+      '<label class="f">Days</label><div class="chips">' + DAYS.map(function (k) { return '<label class="daychip"><input type="checkbox" name="day" value="' + k + '" ' + (x.days.indexOf(k) >= 0 ? 'checked' : '') + '><span>' + DAY_NAME[k] + '</span></label>'; }).join('') + '</div>' +
+      '<div class="grid2"><label class="f">First time<input type="time" name="from" value="' + esc(x.from) + '"></label><label class="f">Last time<input type="time" name="to" value="' + esc(x.to) + '"></label></div>' +
+      '<label class="f">Times every<select name="every">' + [15, 30, 60].map(function (n) { return '<option value="' + n + '" ' + (x.every === n ? 'selected' : '') + '>' + n + ' minutes</option>'; }).join('') + '</select></label>' +
+      '<div class="grid2"><label class="f">Orders close<select name="cutoffDays">' + [0, 1, 2, 3].map(function (n) { return '<option value="' + n + '" ' + (x.cutoffDays === n ? 'selected' : '') + '>' + (n === 0 ? 'Same day' : n === 1 ? 'The day before' : n + ' days before') + '</option>'; }).join('') + '</select></label>' +
+      '<label class="f">At<input type="time" name="cutoffTime" value="' + esc(x.cutoffTime) + '"></label></div>' +
+      '<label class="f">How guests get it</label><div class="chips">' + Object.keys(MODE_NAME).map(function (m) { return '<label class="daychip"><input type="checkbox" name="mode" value="' + m + '" ' + (x.modes.indexOf(m) >= 0 ? 'checked' : '') + '><span>' + MODE_NAME[m] + '</span></label>'; }).join('') + '</div>' +
+      '<div id="poErr"></div><button class="btn dark block" type="submit">' + (po ? 'Save' : 'Create pre-order') + '</button></form>' +
+      (po ? '<div style="margin-top:10px"><button class="btn danger block" data-po-del>Remove this pre-order</button></div>' : ''));
+    var form = $('#poForm');
+    var checked = function (n) { return $$('[name=' + n + ']', form).filter(function (c) { return c.checked; }).map(function (c) { return c.value; }); };
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      act('preorder.save', { id: po ? po.id : undefined, name: form.name.value, blurb: form.blurb.value, days: checked('day'), from: form.from.value, to: form.to.value, every: form.every.value, cutoffDays: form.cutoffDays.value, cutoffTime: form.cutoffTime.value, modes: checked('mode') })
+        .then(function (j) { closeSheet(); toast(j.change.summary + ' · live'); }).catch(function (err) { errBox('#poErr', err); });
+    });
+    if (po) $('[data-po-del]', sheet).addEventListener('click', function () {
+      if (!window.confirm('Remove ' + po.name + '? Orders already placed stay in the inbox.')) return;
+      act('preorder.delete', { id: po.id }).then(function (j) { closeSheet(); toast(j.change.summary); }).catch(fail);
+    });
+  }
+
+  function poItemSheet(po, it) {
+    var x = it || { name: '', note: '', price: '', limit: '' };
+    openSheet(head(it ? 'Edit item' : 'Add to ' + po.name) + '<form id="piForm"><label class="f">Name<input name="name" required maxlength="80" value="' + esc(x.name) + '"></label>' +
+      '<label class="f">Note<input name="note" maxlength="140" value="' + esc(x.note) + '" placeholder="Serves 8, vegan, 800g"></label>' +
+      '<div class="grid2"><label class="f">Price €<input name="price" inputmode="decimal" required value="' + esc(x.price) + '"></label><label class="f">Most a day<input name="limit" inputmode="numeric" value="' + esc(x.limit == null ? '' : x.limit) + '" placeholder="No limit"></label></div>' +
+      '<div id="piErr"></div><button class="btn dark block" type="submit">' + (it ? 'Save' : 'Add') + '</button></form>' +
+      (it ? '<div style="margin-top:10px"><button class="btn danger block" data-pi-del>Remove item</button></div>' : ''));
+    var form = $('#piForm');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      act('preorder.item.save', { preorderId: po.id, id: it ? it.id : undefined, name: form.name.value, note: form.note.value, price: form.price.value.replace(',', '.'), limit: form.limit.value })
+        .then(function (j) { closeSheet(); toast(j.change.summary + ' · live'); }).catch(function (err) { errBox('#piErr', err); });
+    });
+    if (it) $('[data-pi-del]', sheet).addEventListener('click', function () { act('preorder.item.delete', { preorderId: po.id, id: it.id }).then(function (j) { closeSheet(); toast(j.change.summary); }).catch(fail); });
   }
 
   // ---------- sheets ----------
@@ -742,7 +843,7 @@
   function split(t, attr) { return t.getAttribute(attr).split('|'); }
 
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-close], [data-close-bg], [data-go], [data-share], [data-share-story], [data-del-story], [data-edit-event], [data-results], [data-menu], [data-new-menu], [data-edit-menu], [data-edit-section], [data-new-section], [data-new-item], [data-edit-item], [data-price], [data-sold], [data-move], [data-inbox], [data-enq], [data-today], [data-look], [data-accent], [data-preset], [data-module], [data-home-move], [data-content], [data-edit-offer], [data-copy], [data-reset], [data-logout]');
+    var t = e.target.closest('[data-close], [data-close-bg], [data-go], [data-share], [data-share-story], [data-del-story], [data-edit-event], [data-results], [data-menu], [data-new-menu], [data-edit-menu], [data-edit-section], [data-new-section], [data-new-item], [data-edit-item], [data-price], [data-sold], [data-move], [data-inbox], [data-enq], [data-today], [data-look], [data-accent], [data-preset], [data-module], [data-home-move], [data-content], [data-edit-offer], [data-copy], [data-reset], [data-logout], [data-po-edit], [data-po-open], [data-po-item], [data-po-sold], [data-go-orders]');
     if (!t || t.disabled) return;
     if (t.hasAttribute('data-close-bg')) { if (e.target === t) closeSheet(); return; }
     if (t.hasAttribute('data-close')) return closeSheet();
@@ -794,6 +895,11 @@
     if (t.hasAttribute('data-home-move')) { var hm = split(t, 'data-home-move'); return act('home.move', { section: hm[0], dir: hm[1] }).catch(fail); }
     if (t.hasAttribute('data-content')) return ({ about: aboutSheet, gallery: gallerySheet, info: infoSheet, hire: hireSheet, links: linksSheet })[t.getAttribute('data-content')]();
     if (t.hasAttribute('data-edit-offer')) return offerSheet(S.data.state.offers.find(function (o) { return o.id === t.getAttribute('data-edit-offer'); }));
+    if (t.hasAttribute('data-po-edit')) return poSheet(findPo(t.getAttribute('data-po-edit')) || null);
+    if (t.hasAttribute('data-po-open')) { var pz = findPo(t.getAttribute('data-po-open')); return act('preorder.open', { id: pz.id, open: !pz.open }).then(function (j) { toast(j.change.summary + ' · live'); }).catch(fail); }
+    if (t.hasAttribute('data-po-item')) { var pi = split(t, 'data-po-item'), ppo = findPo(pi[0]); return poItemSheet(ppo, pi[1] ? ppo.items.find(function (x) { return x.id === pi[1]; }) : null); }
+    if (t.hasAttribute('data-po-sold')) { var ps = split(t, 'data-po-sold'), pit = findPo(ps[0]).items.find(function (x) { return x.id === ps[1]; }); return act('preorder.item.soldout', { preorderId: ps[0], id: ps[1], soldOut: !pit.soldOut }).then(function (j) { toast(j.change.summary + ' · live'); }).catch(fail); }
+    if (t.hasAttribute('data-go-orders')) { S.inbox = 'orders'; return go('inbox'); }
     if (t.hasAttribute('data-copy')) return copy(t.getAttribute('data-copy')).then(function () { toast('Copied'); });
     if (t.hasAttribute('data-reset')) {
       if (!window.confirm('Reset all demo data back to the start?')) return;
@@ -803,6 +909,8 @@
   });
 
   document.addEventListener('change', function (e) {
+    var ord = e.target.closest('[data-order]');
+    if (ord) return api('/api/admin/orders/' + ord.getAttribute('data-order'), { method: 'PATCH', body: { status: ord.value } }).then(function () { toast('Order ' + ord.value); return load(); }).catch(fail);
     var sel = e.target.closest('[data-booking]');
     if (!sel) return;
     api('/api/admin/bookings/' + sel.getAttribute('data-booking'), { method: 'PATCH', body: { status: sel.value } }).then(function () { toast('Booking ' + sel.value); return load(); }).catch(fail);

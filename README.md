@@ -21,6 +21,7 @@ The design and page structure are fixed. The venue only edits facts, so it can't
 |---|---|
 | Public site | Home (today or next up, stories, what's being served now), What's on with an archive, menus with diet filters, a page per event with booking, table and private-hire requests, the Circle |
 | Menu builder | As many menus as needed (breakfast, lunch, dinner, late, drinks), each with its own times and days. The site shows what is being served now and switches by itself, including menus that run past midnight. Sections, dishes, prices, diet tags, sold out, reordering |
+| Pre-orders | Order ahead for set days: a café's weekend bakes to collect, a restaurant's Sunday roast to eat in or take away. Each pre-order has its days, a time window cut into slots, a cut-off ("order by Saturday 20:00"), and items with prices and a most-per-day limit, checked so the kitchen never takes more than it can make. The editor shows a kitchen list (how many of each item per date), the orders by time with ready / collected / cancelled, and where orders came from |
 | Event bookings | Any event can take bookings with a number of places and a price per guest (paid on the day). Capacity is checked so the last place can't be sold twice |
 | Stories | Grouped in themes, like highlights (Tonight, From the kitchen, Last weekend). A theme shows a fresh ring when something new is posted. Stories linked to an event also stay on its page. Can be Circle-only, and shared to Instagram from the editor |
 | The Circle | The venue's own audience list. Guests join with name, email and consent; members see new events (Circle-first, 24 or 48 hours early) and Circle-only stories. Members download as CSV |
@@ -28,7 +29,7 @@ The design and page structure are fixed. The venue only edits facts, so it can't
 | Live updates | Open pages check for a new version every 15 seconds and swap in fresh content |
 | Event logic | Works out today from the date. A day runs until 06:00, so a 03:00 set still counts as that night. Repeating events (weekly, monthly) make a dated copy each time; one date can be cancelled without touching the rest. Past events move to the archive automatically |
 | Open status | "Open now · until 03:00", "Opens today at 18:00" or "Closed today", including closing after midnight and one-day closures |
-| Editor (`/admin`) | Phone-first: Today, Events, Menu, Inbox, Circle, Stats, More. Every save says which touchpoints it reached |
+| Editor (`/admin`) | Phone-first: Today, What's on, Menu, Inbox, Circle, Stats, More. Every save says which touchpoints it reached |
 | Share kit | Post (4:5) and story (9:16) images drawn in the venue's look and colour, captions in English and Spanish per channel (Instagram, Google, Facebook, WhatsApp) with tagged links (`?src=instagram`) so Stats knows what worked |
 | Inbox | Event bookings per date with arrived / no-show / cancelled, and table or hire requests, each tagged with where it came from |
 | Search data | Restaurant, opening hours, menu and upcoming events as schema.org JSON-LD |
