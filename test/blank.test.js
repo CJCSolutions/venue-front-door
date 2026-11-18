@@ -4,6 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const os = require('os');
+const fs = require('fs');
 const path = require('path');
 
 process.env.DATA_FILE = path.join(os.tmpdir(), `vfd-blank-${process.pid}.json`);
@@ -19,7 +20,7 @@ test.before(async () => {
   server = app.listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
 });
-test.after(() => server.close());
+test.after(() => { server.close(); try { fs.unlinkSync(process.env.DATA_FILE); } catch {} });
 
 test('no DEMO_MODE: a new store starts empty and every page still renders', async () => {
   for (const p of ['/', '/whats-on', '/menu', '/book', '/visit', '/about', '/circle', '/playbook', '/admin', '/api/playbook.json', '/api/playbook-guide.json']) {
@@ -28,6 +29,10 @@ test('no DEMO_MODE: a new store starts empty and every page still renders', asyn
     // /playbook and /admin are static pages; the rest are built from the store.
     if (!['/playbook', '/admin'].includes(p)) assert.doesNotMatch(await r.text(), /Marea|Dune|Kasper|Sunday roast/, p);
   }
+  // An empty menu shows only the coming soon line: no diet filters, no allergies note.
+  const menu = await (await fetch(base + '/menu')).text();
+  assert.match(menu, /The menu is coming soon\./);
+  assert.doesNotMatch(menu, /data-filter=|class="filters"|Allergies\?/);
   // No pre-orders yet, so /order is the normal "not found" page, not an error.
   assert.strictEqual((await fetch(base + '/order')).status, 404);
   const feed = await (await fetch(base + '/api/playbook.json')).json();
