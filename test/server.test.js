@@ -187,3 +187,14 @@ test('a venue can keep its own booking system', async () => {
   const bad = await fetch(base + '/api/admin/action', { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ action: { type: 'links.save', payload: { bookingUrl: 'http://insecure.example.com' } } }) });
   assert.strictEqual(bad.status, 400);
 });
+
+test('menus and what\'s on can be embedded in an existing website', async () => {
+  const r = await fetch(base + '/menu?sample=restaurant&embed=1');
+  assert.strictEqual(r.status, 200);
+  const html = await r.text();
+  assert.match(html, /class="embedded"/);
+  assert.doesNotMatch(html, /class="masthead"/);
+  assert.match(html, /<base target="_blank">/);
+  const book = await (await fetch(base + '/book?sample=beach')).text();
+  assert.match(book, /Book a table<\/b> on our booking system/);
+});

@@ -69,7 +69,7 @@ async function context(req, extra = {}) {
   const data = DEMO ? overlay(saved, choice.sample) : saved;
   const look = choice.look || data.venue.look;
   return {
-    state: data, version, look, demo: DEMO, sample: choice.sample || null, path: req.originalUrl, member, counts,
+    state: data, version, look, demo: DEMO, sample: choice.sample || null, path: req.originalUrl, member, counts, embed: req.query.embed === '1',
     schedule: buildSchedule(data, new Date(), { member: Boolean(member) }), status: openStatus(data),
     menus: data.venue.modules.menu ? menusNow(data) : [], offers: data.venue.modules.offers ? offersNow(data) : [],
     preorders: data.venue.modules.preorder ? preordersNow(data) : [], L: labels(data), baseUrl: baseUrl(req)
