@@ -8,6 +8,7 @@ const path = require('path');
 process.env.DATA_FILE = path.join(os.tmpdir(), `vfd-test-${process.pid}.json`);
 process.env.ADMIN_PASSWORD = 'test-pass';
 process.env.LEADS_PASSWORD = 'leads-pass';
+process.env.DEMO_MODE = '1';
 delete process.env.DB_NAME;
 
 const { app } = require('../app');
@@ -106,10 +107,25 @@ test('a café hides events but keeps menu, about and visit', async () => {
 });
 
 test('the Pulse page takes a lead and the leads page is private', async () => {
-  for (const q of ['', '?lang=es']) assert.strictEqual((await fetch(base + '/pulse' + q)).status, 200);
-  const r = await fetch(base + '/pulse', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'lang=en&name=Sam&venue=Sol&type=cafe&contact=sam%40example.com&needs=menus&needs=social&consent=1' });
+  for (const q of ['', '?lang=es']) assert.strictEqual((await fetch(base + '/for-venues' + q)).status, 200);
+  const r = await fetch(base + '/for-venues', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'lang=en&name=Sam&venue=Sol&type=cafe&contact=sam%40example.com&needs=menus&needs=social&consent=1' });
   assert.match(await r.text(), /be in touch/);
-  const locked = await (await fetch(base + '/pulse/leads')).text();
+  const locked = await (await fetch(base + '/leads')).text();
   assert.doesNotMatch(locked, /Sam/);
-  assert.strictEqual((await fetch(base + '/pulse/leads.csv')).status, 401);
+  assert.strictEqual((await fetch(base + '/leads.csv')).status, 401);
+});
+
+test('the four sample venues each show their own content', async () => {
+  const cafe = await fetch(base + '/?sample=cafe');
+  const html = await cafe.text();
+  assert.match(html, /<a class="logo" href="\/">Sol</);
+  assert.doesNotMatch(html, /Coming up/);
+  const cookie = cafe.headers.get('set-cookie') ? cafe.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ') : '';
+  const menu = await (await fetch(base + '/menu', { headers: { cookie } })).text();
+  assert.match(menu, /Coffee and cakes/);
+  const bar = await (await fetch(base + '/?sample=bar')).text();
+  assert.match(bar, /Lunar/);
+  assert.match(bar, /Coming up/);
+  const beach = await (await fetch(base + '/?sample=beach')).text();
+  assert.match(beach, /Cala Blanca/);
 });

@@ -1,8 +1,8 @@
-# Venue Front Door, powered by Pulse
+# Venue Front Door
 
 **The problem:** a venue changes something (tonight's DJ, a price, a sold-out dish, the hours) and it has to be updated in many places: the website, the QR menu, Google, Instagram, Facebook. Most venues don't keep up, so their website is stale and guests get wrong information.
 
-**Pulse** is the engine underneath: one update, every channel.
+It solves five problems in one system: menus that update in seconds, events posted once, exposure on every channel, a community the venue owns, and knowing what works (engagement by channel, marketing effort and spend against takings).
 
 **What this does:** the venue changes it once, on a phone. The website updates by itself, live, for anyone already looking at it. The QR menu and the search data (schema.org) update too. For the social channels it makes a ready post (image plus caption in English and Spanish) that the venue shares from its own phone in one tap. Nothing is linked to anyone else's Meta or Google account.
 
@@ -35,8 +35,9 @@ The design and page structure are fixed. The venue only edits facts, so it can't
 
 ## Selling it
 
-- `/pulse` is the sales page (English, `?lang=es` for Spanish): the problem, one update to every channel, the module structure, use cases, styles, and a contact form. In demo mode every venue page carries a "Sample venue" banner pointing to it.
-- Enquiries are stored in the `leads` table and listed at `/pulse/leads` (password in `LEADS_PASSWORD`), with a CSV download. Demo resets do not touch leads.
+- `/for-venues` is the sales page (English, `?lang=es` for Spanish): the five problems with small mock-ups, the four sample venues, tracking, the module structure, styles, and a contact form. In demo mode every venue page carries a "This is a sample" banner pointing to it.
+- The demo has four sample venues, picked from the bar at the top: Sol (café), Marea (restaurant, the editable one), Lunar (bar and events) and Cala Blanca (beach club). The choice is remembered while browsing.
+- Enquiries are stored in the `leads` table and listed at `/leads` (password in `LEADS_PASSWORD`), with a CSV download. Demo resets do not touch leads.
 
 ## Run it locally
 
@@ -58,7 +59,7 @@ Without `DB_NAME` it stores data in `data/local.json`.
 | `DEMO_MODE` | `1` shows the look switcher on the site, the demo password on the login page and a reset button |
 | `PUBLIC_URL` | Full site address used in links and search data, e.g. `https://venue.foodforthought.agency` |
 | `NODE_ENV` | `production` marks the login cookie as secure |
-| `LEADS_PASSWORD` | Opens `/pulse/leads`, the list of enquiries from the sales page |
+| `LEADS_PASSWORD` | Opens `/leads`, the list of enquiries from the sales page |
 
 Tables are created on first start.
 

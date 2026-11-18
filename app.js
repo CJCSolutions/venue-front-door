@@ -6,6 +6,7 @@ const express = require('express');
 const { createStore } = require('./lib/store');
 const { buildSchedule, findOccurrence, openStatus, labels, menusNow, offersNow } = require('./lib/schedule');
 const { PRESETS, MODULES, SECTIONS } = require('./lib/presets');
+const { SAMPLES, overlay } = require('./lib/samples');
 const { applyAction, ActionError, LOOKS } = require('./lib/actions');
 const { buildStats } = require('./lib/stats');
 const { localNow, addDays } = require('./lib/time');
@@ -44,17 +45,29 @@ async function currentMember(req) {
   return t && /^[\w-]{10,60}$/.test(t) ? store.memberByToken(t) : null;
 }
 
-async function context(req, extra = {}) {
-  const [{ data, version }, counts, member] = await Promise.all([store.getState(), store.bookedCounts(), extra.member !== undefined ? extra.member : currentMember(req)]);
-  const look = DEMO && LOOKS.includes(req.query.look) ? req.query.look : data.venue.look;
-  // Demo only: preview another use case without saving it.
-  if (DEMO && PRESETS[req.query.usecase] && req.query.usecase !== data.venue.type) {
-    data.venue.type = req.query.usecase;
-    data.venue.modules = { ...PRESETS[req.query.usecase].modules };
-    data.venue.home = null;
+// Demo only: which sample venue and style the visitor picked. Remembered in
+// a cookie so every page and link stays on the same sample.
+function demoChoice(req, res) {
+  if (!DEMO) return {};
+  let sample = SAMPLES[req.query.sample] ? req.query.sample : readCookie(req, 'vfd_sample');
+  let look = LOOKS.includes(req.query.look) ? req.query.look : readCookie(req, 'vfd_look');
+  if (!SAMPLES[sample]) sample = 'restaurant';
+  if (req.query.sample && !req.query.look) look = null; // a new sample shows its own style
+  if (!LOOKS.includes(look)) look = null;
+  if (res && (req.query.sample || req.query.look)) {
+    res.append('Set-Cookie', `vfd_sample=${sample}; Path=/; SameSite=Lax; Max-Age=86400${SECURE}`);
+    res.append('Set-Cookie', `vfd_look=${look || ''}; Path=/; SameSite=Lax; Max-Age=${look ? 86400 : 0}${SECURE}`);
   }
+  return { sample, look };
+}
+
+async function context(req, extra = {}) {
+  const [{ data: saved, version }, counts, member] = await Promise.all([store.getState(), store.bookedCounts(), extra.member !== undefined ? extra.member : currentMember(req)]);
+  const choice = demoChoice(req, extra.res);
+  const data = DEMO ? overlay(saved, choice.sample) : saved;
+  const look = choice.look || data.venue.look;
   return {
-    state: data, version, look, demo: DEMO, path: req.originalUrl, member, counts,
+    state: data, version, look, demo: DEMO, sample: choice.sample || null, path: req.originalUrl, member, counts,
     schedule: buildSchedule(data, new Date(), { member: Boolean(member) }), status: openStatus(data),
     menus: data.venue.modules.menu ? menusNow(data) : [], offers: data.venue.modules.offers ? offersNow(data) : [], L: labels(data), baseUrl: baseUrl(req)
   };
@@ -124,35 +137,35 @@ app.use(express.static(path.join(__dirname, 'public'), { index: false, maxAge: '
 
 // ---------- public site ----------
 
-app.get('/', page(async (req, res) => { countVisit(req); res.send(render.homePage(await context(req))); }));
+app.get('/', page(async (req, res) => { countVisit(req); res.send(render.homePage(await context(req, { res }))); }));
 app.get('/whats-on', page(async (req, res) => {
   countVisit(req);
-  const ctx = await context(req);
+  const ctx = await context(req, { res });
   if (!ctx.state.venue.modules.events) return res.status(404).send(render.notFoundPage(ctx));
   res.send(render.whatsOnPage(ctx));
 }));
 app.get('/about', page(async (req, res) => {
   countVisit(req);
-  const ctx = await context(req);
+  const ctx = await context(req, { res });
   if (!ctx.state.venue.modules.about && !ctx.state.venue.modules.gallery) return res.status(404).send(render.notFoundPage(ctx));
   res.send(render.aboutPage(ctx));
 }));
-app.get('/visit', page(async (req, res) => { countVisit(req); res.send(render.visitPage(await context(req))); }));
+app.get('/visit', page(async (req, res) => { countVisit(req); res.send(render.visitPage(await context(req, { res }))); }));
 app.get('/menu', page(async (req, res) => {
   countVisit(req);
-  const ctx = await context(req);
+  const ctx = await context(req, { res });
   if (!ctx.state.venue.modules.menu) return res.status(404).send(render.notFoundPage(ctx));
   res.send(render.menuPage(ctx));
 }));
 app.get('/book', page(async (req, res) => {
   countVisit(req);
-  res.send(render.bookPage(await context(req), { values: { src: cleanSrc(req.query.src), type: ['table', 'private', 'other'].includes(req.query.type) ? req.query.type : '' } }));
+  res.send(render.bookPage(await context(req, { res }), { values: { src: cleanSrc(req.query.src), type: ['table', 'private', 'other'].includes(req.query.type) ? req.query.type : '' } }));
 }));
 app.get('/night/:key', (req, res) => res.redirect(301, `/event/${encodeURIComponent(req.params.key)}`));
 
 app.get('/event/:key', page(async (req, res) => {
   countVisit(req);
-  const ctx = await context(req);
+  const ctx = await context(req, { res });
   const o = findOccurrence(ctx.state, req.params.key, new Date(), { member: Boolean(ctx.member), editor: isEditor(req) });
   if (!o) return res.status(404).send(render.notFoundPage(ctx));
   res.send(render.eventPage(ctx, o, { values: { src: cleanSrc(req.query.src) } }));
@@ -161,7 +174,7 @@ app.get('/event/:key', page(async (req, res) => {
 const form = express.urlencoded({ extended: false, limit: '20kb' });
 
 app.post('/event/:key', form, page(async (req, res) => {
-  const ctx = await context(req);
+  const ctx = await context(req, { res });
   const o = findOccurrence(ctx.state, req.params.key, new Date(), { member: Boolean(ctx.member) });
   if (!o) return res.status(404).send(render.notFoundPage(ctx));
   const b = req.body || {};
@@ -182,7 +195,7 @@ app.post('/event/:key', form, page(async (req, res) => {
 }));
 
 app.post('/book', form, page(async (req, res) => {
-  const ctx = await context(req);
+  const ctx = await context(req, { res });
   const b = req.body || {};
   const values = {
     type: ['table', 'private', 'other'].includes(b.type) ? b.type : 'table',
@@ -200,14 +213,15 @@ app.post('/book', form, page(async (req, res) => {
   res.send(render.bookPage(ctx, { sent: true }));
 }));
 
-// ---------- Pulse sales page and leads ----------
+// ---------- sales page and leads ----------
 
-app.get('/pulse', page(async (req, res) => {
+app.get('/pulse', (req, res) => res.redirect(301, '/for-venues' + (req.query.lang === 'es' ? '?lang=es' : '')));
+app.get('/for-venues', page(async (req, res) => {
   countVisit(req);
   res.send(pitch.pitchPage({ lang: req.query.lang === 'es' ? 'es' : 'en' }));
 }));
 
-app.post('/pulse', form, page(async (req, res) => {
+app.post('/for-venues', form, page(async (req, res) => {
   const b = req.body || {};
   const lang = b.lang === 'es' ? 'es' : 'en';
   const t = pitch.T[lang];
@@ -222,33 +236,33 @@ app.post('/pulse', form, page(async (req, res) => {
   if (!values.name || !values.contact) return res.status(400).send(pitch.pitchPage({ lang, error: t.errName, values }));
   if (b.consent !== '1') return res.status(400).send(pitch.pitchPage({ lang, error: t.errConsent, values }));
   await store.addLead({ ...values, needs: needs.join(', '), lang });
-  console.log(JSON.stringify({ level: 'INFO', message: `New Pulse lead: ${values.name} (${values.venue || values.type})`, timestamp: new Date().toISOString() }));
+  console.log(JSON.stringify({ level: 'INFO', message: `New lead: ${values.name} (${values.venue || values.type})`, timestamp: new Date().toISOString() }));
   res.send(pitch.pitchPage({ lang, sent: true }));
 }));
 
 function leadsAllowed(req) { return LEADS_PASSWORD && readCookie(req, 'vfd_leads') === sign('leads:' + LEADS_PASSWORD); }
 
-app.get('/pulse/leads', page(async (req, res) => {
+app.get('/leads', page(async (req, res) => {
   res.set('X-Robots-Tag', 'noindex');
   if (!LEADS_PASSWORD) return res.status(503).send(pitch.leadsPage({ error: 'Set LEADS_PASSWORD on the server to open this page.' }));
   res.send(pitch.leadsPage({ leads: leadsAllowed(req) ? await store.listLeads() : null }));
 }));
 
-app.post('/pulse/leads', form, page(async (req, res) => {
+app.post('/leads', form, page(async (req, res) => {
   if (!LEADS_PASSWORD) return res.status(503).send(pitch.leadsPage({ error: 'Set LEADS_PASSWORD on the server to open this page.' }));
   if (limited('leadslogin:' + req.ip, 8, 10 * 60 * 1000)) return res.status(429).send(pitch.leadsPage({ error: 'Too many tries. Wait a few minutes.' }));
   const given = Buffer.from(String((req.body || {}).password || ''));
   const want = Buffer.from(LEADS_PASSWORD);
   if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return res.status(401).send(pitch.leadsPage({ error: 'Wrong password' }));
-  res.set('Set-Cookie', `vfd_leads=${sign('leads:' + LEADS_PASSWORD)}; HttpOnly; Path=/pulse; SameSite=Lax; Max-Age=${30 * 86400}${SECURE}`);
-  res.redirect(303, '/pulse/leads');
+  res.set('Set-Cookie', `vfd_leads=${sign('leads:' + LEADS_PASSWORD)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${30 * 86400}${SECURE}`);
+  res.redirect(303, '/leads');
 }));
 
-app.get('/pulse/leads.csv', page(async (req, res) => {
-  if (!leadsAllowed(req)) return res.status(401).send('Log in at /pulse/leads first');
+app.get('/leads.csv', page(async (req, res) => {
+  if (!leadsAllowed(req)) return res.status(401).send('Log in at /leads first');
   const rows = await store.listLeads();
   const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  res.set('Content-Type', 'text/csv; charset=utf-8').set('Content-Disposition', 'attachment; filename="pulse-leads.csv"');
+  res.set('Content-Type', 'text/csv; charset=utf-8').set('Content-Disposition', 'attachment; filename="venue-leads.csv"');
   res.send(['date,name,venue,type,contact,needs,message,lang', ...rows.map((l) => [String(l.created_at).slice(0, 16), l.name, l.venue, l.type, l.contact, l.needs, l.message, l.lang].map(cell).join(','))].join('\n'));
 }));
 
@@ -260,7 +274,7 @@ function setCircleCookie(res, token) {
 
 app.get('/circle', page(async (req, res) => {
   countVisit(req);
-  const ctx = await context(req);
+  const ctx = await context(req, { res });
   if (!ctx.state.venue.modules.circle) return res.status(404).send(render.notFoundPage(ctx));
   res.send(render.circlePage(ctx, { joined: req.query.welcome === '1' }));
 }));
@@ -274,7 +288,7 @@ app.get('/circle/key/:token', page(async (req, res) => {
 
 app.post('/circle', form, page(async (req, res) => {
   const b = req.body || {};
-  const ctx = await context(req);
+  const ctx = await context(req, { res });
   const name = String(b.name || '').trim().slice(0, 80);
   const email = String(b.email || '').trim().toLowerCase().slice(0, 120);
   if (b.website) return res.redirect(303, '/circle');
@@ -385,6 +399,6 @@ app.post('/api/admin/reset', requireAdmin, page(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.use(page(async (req, res) => res.status(404).send(render.notFoundPage(await context(req)))));
+app.use(page(async (req, res) => res.status(404).send(render.notFoundPage(await context(req, { res })))));
 
 module.exports = { app, store, PORT, DEMO };

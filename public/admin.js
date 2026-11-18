@@ -1,4 +1,4 @@
-/* Pulse editor: phone-first. Every save goes to /api/admin/action, which
+/* Venue editor: phone-first. Every save goes to /api/admin/action, which
    returns what changed and which touchpoints it reached. */
 (function () {
   'use strict';
@@ -70,7 +70,7 @@
   function showLogin() {
     tabs.classList.add('hidden');
     api('/api/editor-info').catch(function () { return {}; }).then(function (info) {
-      view.innerHTML = '<div class="login"><p class="muted">Pulse</p><h2>Log in to update your venue</h2>' +
+      view.innerHTML = '<div class="login"><p class="muted">Venue editor</p><h2>Log in to update your venue</h2>' +
         '<p class="muted">Change an event, the menu or the hours. The website and every touchpoint follow.</p>' +
         (info.demo ? '<div class="card"><b>Demo password:</b> ' + esc(info.demoPassword) + '<br><span class="muted">This is a public demo. Anyone can edit; reset it under More.</span></div>' : '') +
         '<form id="loginForm"><label class="f">Password<input type="password" name="password" autocomplete="current-password" required></label>' +
@@ -318,7 +318,7 @@
         return '<label class="f">' + f[1] + '<input name="' + f[0] + '" value="' + esc(v[f[0]]) + '"></label>';
       }).join('') + '<div id="venueErr"></div><button class="btn dark block" type="submit">Save details</button></form>' +
       '<h3>Account</h3><div style="display:grid;gap:10px">' + (S.data.demo ? '<button class="btn danger block" data-reset>Reset the demo data</button>' : '') + '<button class="btn block" data-logout>Log out</button></div>' +
-      '<p class="muted" style="margin-top:20px;text-align:center">Pulse · one update, every channel</p>';
+      '<p class="muted" style="margin-top:20px;text-align:center">One update, every channel</p>';
 
     $('#weekForm').addEventListener('submit', function (e) {
       e.preventDefault();
