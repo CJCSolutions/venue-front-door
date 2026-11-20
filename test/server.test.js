@@ -303,6 +303,14 @@ test('Listed: a food offer on its own, a night on its own, or both', () => {
   assert.ok(validate({ ...base, type: 'food', title: 'Menú', days: ['1'], until: '2026-11-22' }, '2026-11-20').errors.includes('until'));
   assert.ok(validate({ ...base, type: 'food', title: 'Menú', days: ['6'], until: '2026-11-24' }, '2026-11-20').errors.includes('until'));
   assert.ok(validate({ ...base, type: 'food', title: 'Menú', days: ['1'], until: '2027-03-01' }, '2026-11-20').errors.includes('until'));
+  // a food festival: last day, no days ticked, runs every day until then
+  const fest = validate({ ...base, type: 'food', title: 'Restaurat', until: '2026-11-30' }, '2026-11-20');
+  assert.deepStrictEqual(fest.errors, []);
+  assert.strictEqual(repeatLabel(fest.values), 'Every day until 30 Nov');
+  // food with a DJ ticked is both
+  assert.strictEqual(validate({ ...base, type: 'food', title: 'Paella y DJ', tags: ['dj'] }, '2026-11-20').values.type, 'both');
+  // blank day values are ignored
+  assert.deepStrictEqual(validate({ ...base, type: 'food', title: 'Menú', days: ['', '1'] }, '2026-11-20').values.days, [1]);
   // entries sent before the type existed are read from their tags
   assert.strictEqual(typeOf({ tags: ['food', 'dj'] }), 'both');
   assert.strictEqual(typeOf({ tags: ['food'] }), 'food');
