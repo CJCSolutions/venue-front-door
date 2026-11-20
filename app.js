@@ -241,7 +241,7 @@ app.post('/book/table', express.urlencoded({ extended: false, limit: '20kb' }), 
   const todo = plan && TP.action(plan, result.table_ref);
   const subject = todo ? `Party of ${tv.guests} at ${tv.time}: ${todo}${status === 'pending' ? ' (to confirm)' : ''}` : status === 'pending' ? `Booking to confirm: ${tv.guests} at ${tv.time}` : `New booking: ${tv.guests} at ${tv.time}`;
   notify.venueAlert(ctx.state, subject,
-    [`${tv.name}, ${tv.guests} ${tv.guests > 1 ? 'guests' : 'guest'}, ${when}.`, plan && `${TP.label(plan, result.table_ref)}.${todo ? ` Please ${todo} before ${tv.time}.` : ''}`, `Contact: ${tv.contact}`, tv.note && `Note: ${tv.note}`, status === 'pending' ? 'Confirm or decline it in the editor.' : 'Confirmed automatically.'],
+    [`${tv.name}, ${tv.guests} ${tv.guests > 1 ? 'guests' : 'guest'}, ${when}.`, plan && (todo ? `Please ${todo} before ${tv.time}.` : `${TP.label(plan, result.table_ref)}.`), `Contact: ${tv.contact}`, tv.note && `Note: ${tv.note}`, status === 'pending' ? 'Confirm or decline it in the editor.' : 'Confirmed automatically.'],
     { replyTo: tv.contact, base: baseUrl(req) });
   if (status === 'confirmed') notify.guestEmail(ctx.state, tv.contact, 'your table is booked', ['Hello,', '', `Your table for ${tv.guests} is booked for ${when}.`, 'Need to change it? Just reply to this email.']);
   res.send(render.bookPage(ctx, { table: await tableCtx(ctx.state, tv.date), tableSent: { status, ...tv } }));

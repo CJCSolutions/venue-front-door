@@ -257,9 +257,11 @@
   // Table plan: the booking's table, the job to do (join or split), and a move list.
   function tableLine(r) {
     if (!S.data.planOn || !r.table_label) return '';
-    var html = '<div style="margin-top:4px"><span class="pill ' + (r.table_missing && !/suggested/.test(r.table_label) ? 'bad' : 'plain') + '">' + esc(r.table_label) + '</span>' +
-      (r.table_todo ? ' <span class="pill warn">To do: ' + esc(r.table_todo) + '</span>' : '') + '</div>';
-    if (r.moves && r.moves.length && ['pending', 'confirmed', 'arrived'].indexOf(r.status) >= 0) {
+    var canMove = r.moves && r.moves.length && ['pending', 'confirmed', 'arrived'].indexOf(r.status) >= 0;
+    // With a move list the list itself shows the table, so the pill only shows when there is no list or no table.
+    var pill = !canMove || r.table_missing ? '<span class="pill ' + (r.table_missing && !/suggested/.test(r.table_label) ? 'bad' : 'plain') + '">' + esc(r.table_label) + '</span> ' : '';
+    var html = pill || r.table_todo ? '<div style="margin-top:4px">' + pill + (r.table_todo ? '<span class="pill warn">To do: ' + esc(r.table_todo) + '</span>' : '') + '</div>' : '';
+    if (canMove) {
       html += '<select class="tblmove" data-res-table="' + r.id + '" aria-label="Move to another table">' +
         (r.table_ref ? '' : '<option value="" selected>Put on a table…</option>') +
         r.moves.map(function (m) { return '<option value="' + esc(m.ref) + '"' + (m.ref === r.table_ref ? ' selected' : '') + '>' + esc(m.ref === r.table_ref ? m.label + ' (now)' : 'Move to ' + m.label) + '</option>'; }).join('') + '</select>';
@@ -843,7 +845,7 @@
   function tblRow(x) {
     return '<div class="dj tbl"><input data-t-name value="' + esc(x.name) + '" maxlength="12" placeholder="Name" aria-label="Table name or number">' +
       '<input data-t-seats type="number" min="1" max="30" value="' + esc(x.seats) + '" inputmode="numeric" aria-label="Seats">' +
-      '<input data-t-split value="' + esc(x.split ? x.split.join('+') : '') + '" placeholder="4+2" maxlength="5" aria-label="Splits into">' +
+      '<input data-t-split value="' + esc(x.split ? x.split.join('+') : '') + '" maxlength="5" aria-label="Splits into">' +
       '<button type="button" aria-label="Remove table" onclick="this.parentNode.remove()">✕</button></div>';
   }
   function tablesSheet() {
@@ -861,9 +863,10 @@
       '<label class="f">Each booking keeps its table for<select name="hold">' + S.data.holdChoices.map(function (m) { return '<option value="' + m + '"' + (Number(pl.hold || 120) === m ? ' selected' : '') + '>' + holdWords(m) + '</option>'; }).join('') + '</select></label>' +
       '<div class="tblhead"><span>Table</span><span>Seats</span><span>Splits into</span><span></span></div>' +
       '<div id="tbList">' + (pl.tables && pl.tables.length ? pl.tables : [{ name: '1', seats: 2 }, { name: '2', seats: 4 }]).map(tblRow).join('') + '</div>' +
+      '<p class="muted" style="margin:0 0 10px">Splits into: leave empty, or write how a table splits, like 4+2 for a table of 6.</p>' +
       '<button type="button" class="btn small" id="tbAdd" style="margin-bottom:14px">＋ Add a table</button>' +
       '<label class="f">Tables that can be joined<input name="joins" value="' + esc((pl.joins || []).map(function (x) { return x.join('+'); }).join(', ')) + '" placeholder="3+4, 6+7"></label>' +
-      '<p class="muted" style="margin:-4px 0 12px">Splits into: leave empty, or write how a table splits, like 4+2 for a table of 6.</p></div>' +
+      '<p class="muted" style="margin:-4px 0 12px">Separate with commas. Joined tables seat their seats added together.</p></div>' +
       '<div id="tbErr"></div><button class="btn dark block" type="submit">Save</button></form>');
     $('#tbAdd').addEventListener('click', function () {
       var n = $$('#tbList .dj', sheet).length + 1;

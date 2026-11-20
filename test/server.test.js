@@ -462,7 +462,7 @@ test('table plan: bookings go on tables, joins alert the manager, tables can be 
   assert.strictEqual((await book('20:00', 7, 'Big')).status, 200);
   const alert = notify.sent.find((m) => m.to === 'alerts@example.com');
   assert.match(alert.subject, /Party of 7 at 20:00: join tables 2 and 3/);
-  assert.match(alert.text, /Tables 2 \+ 3 joined/);
+  assert.match(alert.text, /Please join tables 2 and 3 before 20:00/);
 
   // Every table is held until 22:00, so 21:00 is full and 22:30 is free.
   const full = await book('21:00', 2, 'Cara');
