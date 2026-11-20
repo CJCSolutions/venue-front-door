@@ -221,6 +221,13 @@ test('the Playbook guide merges client venue feeds and skips one that is down', 
   assert.strictEqual((await r.json()).venues.length, 4);
 });
 
+test('the guide has an ES and EN switch, Spanish first', async () => {
+  const page = await (await fetch(base + '/playbook')).text();
+  assert.match(page, /data-lang="es"[^>]*aria-pressed="true"/);
+  assert.match(page, /data-lang="en"/);
+  assert.match(page, /Qué hay ahora mismo/);
+});
+
 test('ibizaplaybook.com shows only the guest guide, never the sample venues', async () => {
   const h = { headers: { 'x-forwarded-host': 'ibizaplaybook.com' }, redirect: 'manual' };
   const home = await fetch(base + '/', h);
@@ -318,6 +325,7 @@ test('Listed: a food offer on its own, a night on its own, or both', () => {
   const rows = [{ id: 7, status: 'live', data: food.values }];
   assert.strictEqual(toVenues(rows, '2026-11-21').length, 0, 'not on Saturday or Sunday');
   const l = toVenues(rows, '2026-11-23')[0].listings[0];
+  assert.deepStrictEqual(l.repeat, { days: [1, 2, 3, 4, 5], until: '2026-12-18' });
   assert.strictEqual(l.type, 'food'); assert.strictEqual(l.price, '15 €'); assert.strictEqual(l.runs, 'Mon to Fri until 18 Dec');
   assert.strictEqual(toVenues(rows, '2026-12-21').length, 0, 'gone after the end date');
 });

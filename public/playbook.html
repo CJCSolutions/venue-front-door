@@ -52,6 +52,10 @@ header { padding: 18px 0 6px; }
 .brand { font: 700 28px/1 var(--display); letter-spacing: -0.02em; margin: 0; }
 .brand span { color: var(--pink); }
 .sub { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
+.headrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.lang { display: inline-flex; flex: none; border: 1px solid var(--line); border-radius: 99px; background: var(--card); padding: 2px; margin-top: 2px; }
+.lang button { border: 0; background: none; border-radius: 99px; height: 32px; min-width: 40px; padding: 0 10px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.lang button[aria-pressed=true] { background: var(--ink); color: var(--paper); }
 .ask { margin: 16px 0 10px; display: flex; gap: 8px; }
 .ask input { flex: 1; min-width: 0; height: 48px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); padding: 0 14px; }
 .ask button { height: 48px; padding: 0 16px; border: 0; border-radius: 14px; background: var(--ink); color: var(--paper); font-weight: 600; }
@@ -155,21 +159,19 @@ header { padding: 18px 0 6px; }
   </section>
 
   <header id="guideHead">
-    <h1 class="brand">The Ibiza <span>Playbook</span></h1>
-    <p class="sub">What's on right now, the way you like it.</p>
+    <div class="headrow">
+      <h1 class="brand">The Ibiza <span>Playbook</span></h1>
+      <div class="lang" role="group" aria-label="Idioma / Language"><button type="button" data-lang="es" lang="es" aria-pressed="true">ES</button><button type="button" data-lang="en" lang="en" aria-pressed="false">EN</button></div>
+    </div>
+    <p class="sub" data-i18n="sub">What's on right now, the way you like it.</p>
   </header>
 
   <main id="view-tonight">
     <form class="ask" id="askForm">
-      <input id="askInput" aria-label="Ask what you're looking for" type="text" autocomplete="off" placeholder="Food and a DJ near Sant Antoni tonight">
-      <button type="submit">Find</button>
+      <input id="askInput" data-i18n-ph="askPh" data-i18n-label="askLabel" aria-label="Ask what you're looking for" type="text" autocomplete="off" placeholder="Food and a DJ near Sant Antoni tonight">
+      <button type="submit" data-i18n="find">Find</button>
     </form>
-    <div class="examples" aria-label="Try asking">
-      <button type="button" data-ex="food and a DJ near Sant Antoni tonight">Food and a DJ in Sant Antoni</button>
-      <button type="button" data-ex="sunset with live music">Sunset with live music</button>
-      <button type="button" data-ex="somewhere open late with food">Late, with food</button>
-      <button type="button" data-ex="family lunch tomorrow">Family lunch tomorrow</button>
-    </div>
+    <div class="examples" id="examples"></div>
     <p class="understood" id="understood" aria-live="polite"></p>
 
     <div class="seg type" role="group" aria-label="Food, nights or everything">
@@ -178,54 +180,47 @@ header { padding: 18px 0 6px; }
       <button type="button" data-type="all" aria-pressed="true" lang="es">Todo</button>
     </div>
     <div class="seg" role="group" aria-label="When">
-      <button type="button" data-when="now" aria-pressed="false">Now</button>
-      <button type="button" data-when="tonight" aria-pressed="true">Tonight</button>
-      <button type="button" data-when="tomorrow" aria-pressed="false">Tomorrow</button>
+      <button type="button" data-when="now" aria-pressed="false" data-i18n="now">Now</button>
+      <button type="button" data-when="tonight" aria-pressed="true" data-i18n="tonight">Tonight</button>
+      <button type="button" data-when="tomorrow" aria-pressed="false" data-i18n="tomorrow">Tomorrow</button>
     </div>
     <div class="chips" role="group" aria-label="What you want" id="chips"></div>
     <div class="row">
-      <label for="area">Area</label>
-      <select id="area">
-        <option value="">Whole island</option>
-        <option>Ibiza Town</option>
-        <option>Sant Antoni</option>
-        <option>Santa Eulària</option>
-        <option>West coast</option>
-        <option>North</option>
-      </select>
+      <label for="area" data-i18n="area">Area</label>
+      <select id="area"></select>
     </div>
 
-    <div class="count"><h2 id="resultTitle">Tonight</h2><span id="resultCount"></span></div>
+    <div class="count"><h2 id="resultTitle"></h2><span id="resultCount"></span></div>
     <div class="list" id="list"></div>
   </main>
 
   <main id="view-saved" hidden>
-    <div class="count"><h2>Saved</h2><span id="savedCount"></span></div>
+    <div class="count"><h2 data-i18n="saved">Saved</h2><span id="savedCount"></span></div>
     <div class="list" id="savedList"></div>
   </main>
 
   <main id="view-venues" class="panel" hidden>
     <div class="venue-box">
-      <h3>Your line-up disappears in 24 hours</h3>
-      <p>A story is gone by tomorrow, and apps, Google and guides can't read it. If tonight's DJ is only in your story, people looking for "food and a DJ" won't find you.</p>
+      <h3 data-i18n="v1h">Your nights and specials disappear in 24 hours</h3>
+      <p data-i18n="v1p">A story is gone by tomorrow, and apps, Google and guides can't read it. If tonight's DJ or set menu is only in your story, people looking for "food and a DJ" won't find you.</p>
       <div class="compare">
-        <div class="bad"><b>Story only</b>Gone in a day. Not searchable. Not in the Playbook.</div>
-        <div class="good"><b>Post or your website</b>Stays up. Found by guests, Google and the Playbook.</div>
+        <div class="bad" data-i18n-html="v1bad"><b>Story only</b>Gone in a day. Not searchable. Not in the Playbook.</div>
+        <div class="good" data-i18n-html="v1good"><b>Post or your website</b>Stays up. Found by guests, Google and the Playbook.</div>
       </div>
     </div>
     <div class="venue-box">
-      <h3>Show up as Verified</h3>
-      <p>Venues on the venue platform appear with their real line-up, menu by time of day, offers and a button to book or pre-order. You update it once on your phone; the Playbook, your site and Google stay in step.</p>
-      <div class="actions"><a class="btn" id="platformLink" href="/?sample=restaurant">See the venue platform</a></div>
-      <p class="note">Not on the platform yet? <a href="/playbook/add" style="color:var(--pink)">Send what's on for free</a> and it shows as Listed once we've checked it. Verified listings come first.</p>
+      <h3 data-i18n="v2h">Show up as Verified</h3>
+      <p data-i18n="v2p">Venues on the venue platform appear with their nights and specials, menu by time of day, offers and a button to book or pre-order. You update it once on your phone; the Playbook, your site and Google stay in step.</p>
+      <div class="actions"><a class="btn" id="platformLink" href="/?sample=restaurant" data-i18n="v2btn">See the venue platform</a></div>
+      <p class="note" data-i18n-html="v2note">Not on the platform yet? <a href="/playbook/add" style="color:var(--pink)">Send what's on for free</a> and it shows as Listed once we've checked it. Verified listings come first.</p>
     </div>
   </main>
 </div>
 
 <nav class="nav" aria-label="Main"><div>
-  <button type="button" data-view="tonight" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>What's on</button>
-  <button type="button" data-view="saved"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>Saved</button>
-  <button type="button" data-view="venues"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/></svg>For venues</button>
+  <button type="button" data-view="tonight" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="nav_tonight">What's on</span></button>
+  <button type="button" data-view="saved"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><span data-i18n="nav_saved">Saved</span></button>
+  <button type="button" data-view="venues"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/></svg><span data-i18n="nav_venues">For venues</span></button>
 </div></nav>
 
 <div id="sheetHost"></div>
@@ -235,7 +230,96 @@ header { padding: 18px 0 6px; }
   'use strict';
 
   // Minutes on a Saturday service day; times after midnight carry on past 1440.
-  var TAGS = { food: 'Food', dj: 'DJ', sunset: 'Sunset', live: 'Live music', late: 'Open late', family: 'Family' };
+  // ES / EN. Spanish first; the choice is remembered on this phone. ?lang=en or ?lang=es also works.
+  var L = {
+    es: {
+      sub: 'Qué hay ahora mismo, a tu manera.', askPh: 'Cena y DJ cerca de Sant Antoni esta noche', askLabel: 'Escribe lo que buscas', find: 'Buscar',
+      ex: [['cena y dj en sant antoni esta noche', 'Cena y DJ en Sant Antoni'], ['atardecer con música en directo', 'Atardecer con música en directo'], ['algo abierto hasta tarde con comida', 'Hasta tarde, con comida'], ['comida en familia mañana', 'Comida en familia mañana']],
+      now: 'Ahora', tonight: 'Esta noche', tomorrow: 'Mañana', onNow: 'Ahora mismo', area: 'Zona', island: 'Toda la isla', saved: 'Guardados',
+      areas: { 'Ibiza Town': 'Ibiza ciudad', 'West coast': 'Costa oeste', 'North': 'Norte' },
+      kinds: { Restaurant: 'Restaurante', Other: 'Otro', Venue: 'Local' },
+      tags: { food: 'Comida', dj: 'DJ', sunset: 'Atardecer', live: 'Música en directo', late: 'Hasta tarde', family: 'Familias' },
+      typeTitle: { food: 'comida', night: 'noches' }, and: ' y ', in: ' en ',
+      place: 'sitio', places: 'sitios', verified: 'verificados', liveUntil: 'hasta las', from: 'Desde',
+      fromVenue: function (n) { return 'En directo desde la web de ' + n; }, sentBy: function (n) { return 'Enviado por ' + n; },
+      save: 'Guardar', unsave: 'Quitar de guardados', savedN: function (n) { return n + (n === 1 ? ' guardado' : ' guardados'); },
+      none: 'Todavía no hay nada así.', tryThese: 'Prueba con:', without: function (x) { return 'Sin ' + x; }, later: 'Más tarde esta noche', clear: 'Quitar filtros',
+      noSaved: 'Aún no has guardado nada.', noSavedNote: 'Toca el corazón de un sitio para tenerlo aquí esta noche.',
+      tryWords: 'Prueba con palabras como cena, DJ, atardecer, música en directo, tarde, familia o una zona.', looking: 'Buscando: ',
+      when: 'Cuándo', where: 'Dónde', lineup: 'Quién toca', foodRow: 'Comida', offer: 'Oferta', price: 'Precio', runs: 'Se repite',
+      today: 'Hoy', to: ' a ', listedNote: function (n) { return 'Enviado por ' + n + ' y revisado antes de publicarlo.'; },
+      verifiedNote: function (n) { return 'En directo desde la web de ' + n + ' en la plataforma. Cuando lo cambian, cambia aquí.'; },
+      directions: 'Cómo llegar', checkTimes: 'Los horarios pueden cambiar; confírmalo con el local antes de ir.', close: 'Cerrar',
+      actions: { 'Book on their site': 'Reservar en su web', 'See it on their site': 'Verlo en su web', 'See the menu': 'Ver la carta', 'Pre-order on their site': 'Encargar en su web', 'Their page': 'Su página' },
+      dow: ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], mon: ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'],
+      everyDay: 'Todos los días', every: 'Cada ', until: ' hasta el ', range: function (a, b) { return a + ' a ' + b; },
+      nav_tonight: 'Qué hay', nav_saved: 'Guardados', nav_venues: 'Para locales',
+      v1h: 'Tus noches y especiales desaparecen en 24 horas',
+      v1p: 'Una story desaparece al día siguiente, y ni las apps, ni Google, ni las guías pueden leerla. Si el DJ o el menú de esta noche solo están en tu story, quien busca "cena y DJ" no te encuentra.',
+      v1bad: '<b>Solo en stories</b>Desaparece en un día. No se puede buscar. No sale en el Playbook.', v1good: '<b>Post o tu web</b>Se queda. Lo encuentran los clientes, Google y el Playbook.',
+      v2h: 'Sal como Verified', v2p: 'Los locales en la plataforma salen con sus noches y especiales, la carta según la hora, ofertas y un botón para reservar o encargar. Lo cambias una vez desde el móvil y el Playbook, tu web y Google van a la par.',
+      v2btn: 'Ver la plataforma para locales', v2note: '¿Aún no estás en la plataforma? <a href="/playbook/add" style="color:var(--pink)">Envía lo que tienes, gratis</a> y sale como Listed cuando lo revisemos. Los Verified salen primero.'
+    },
+    en: {
+      sub: "What's on right now, the way you like it.", askPh: 'Food and a DJ near Sant Antoni tonight', askLabel: "Ask what you're looking for", find: 'Find',
+      ex: [['food and a DJ near Sant Antoni tonight', 'Food and a DJ in Sant Antoni'], ['sunset with live music', 'Sunset with live music'], ['somewhere open late with food', 'Late, with food'], ['family lunch tomorrow', 'Family lunch tomorrow']],
+      now: 'Now', tonight: 'Tonight', tomorrow: 'Tomorrow', onNow: 'On right now', area: 'Area', island: 'Whole island', saved: 'Saved',
+      areas: {}, kinds: {},
+      tags: { food: 'Food', dj: 'DJ', sunset: 'Sunset', live: 'Live music', late: 'Open late', family: 'Family' },
+      typeTitle: { food: 'food', night: 'nights' }, and: ' and ', in: ' in ',
+      place: 'place', places: 'places', verified: 'verified', liveUntil: 'until', from: 'From',
+      fromVenue: function (n) { return 'Live from ' + n + '’s own site'; }, sentBy: function (n) { return 'Sent in by ' + n; },
+      save: 'Save', unsave: 'Remove from saved', savedN: function (n) { return n + ' saved'; },
+      none: 'Nothing matches that yet.', tryThese: 'Try one of these:', without: function (x) { return 'Without ' + x; }, later: 'Later tonight', clear: 'Clear filters',
+      noSaved: 'Nothing saved yet.', noSavedNote: 'Tap the heart on a place to keep it here for tonight.',
+      tryWords: 'Try words like food, DJ, sunset, live music, late, family, or an area.', looking: 'Looking for: ',
+      when: 'When', where: 'Where', lineup: 'Who is playing', foodRow: 'Food', offer: 'Offer', price: 'Price', runs: 'Runs',
+      today: 'Today', to: ' to ', listedNote: function (n) { return 'Sent in by ' + n + ' and checked before it went up.'; },
+      verifiedNote: function (n) { return 'Live from ' + n + '’s own site on the venue platform. When they change it, this changes.'; },
+      directions: 'Directions', checkTimes: 'Times can change, so check with the venue before you go.', close: 'Close',
+      actions: {},
+      dow: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], mon: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      everyDay: 'Every day', every: 'Every ', until: ' until ', range: function (a, b) { return a + ' to ' + b; },
+      nav_tonight: "What's on", nav_saved: 'Saved', nav_venues: 'For venues',
+      v1h: 'Your nights and specials disappear in 24 hours',
+      v1p: 'A story is gone by tomorrow, and apps, Google and guides can\'t read it. If tonight\'s DJ or set menu is only in your story, people looking for "food and a DJ" won\'t find you.',
+      v1bad: '<b>Story only</b>Gone in a day. Not searchable. Not in the Playbook.', v1good: '<b>Post or your website</b>Stays up. Found by guests, Google and the Playbook.',
+      v2h: 'Show up as Verified', v2p: 'Venues on the venue platform appear with their nights and specials, menu by time of day, offers and a button to book or pre-order. You update it once on your phone; the Playbook, your site and Google stay in step.',
+      v2btn: 'See the venue platform', v2note: 'Not on the platform yet? <a href="/playbook/add" style="color:var(--pink)">Send what\'s on for free</a> and it shows as Listed once we\'ve checked it. Verified listings come first.'
+    }
+  };
+  var LANG = 'es';
+  try { var qs = new URLSearchParams(location.search).get('lang'); LANG = qs === 'en' || qs === 'es' ? qs : (localStorage.getItem('playbook-lang') || 'es'); } catch (e) {}
+  if (!L[LANG]) LANG = 'es';
+  function t(k) { return L[LANG][k]; }
+  var TAGS = L[LANG].tags;
+  var AREAS = ['Ibiza Town', 'Sant Antoni', 'Santa Eulària', 'West coast', 'North'];
+  function areaName(a) { return t('areas')[a] || a; }
+  function kindName(k) { return t('kinds')[k] || k; }
+  function actionLabel(a) { return t('actions')[a] || a; }
+  // "Mon to Fri until 18 Dec" / "lun a vie hasta el 18 dic", from the days (0 = Sunday) and the last date.
+  function repeatText(r) {
+    if (!r || !r.days || !r.days.length) return '';
+    var order = [1, 2, 3, 4, 5, 6, 0].filter(function (d) { return r.days.indexOf(d) >= 0; });
+    var idx = order.map(function (d) { return (d + 6) % 7; });
+    var run = idx.length > 2 && idx.every(function (x, i) { return !i || x === idx[i - 1] + 1; });
+    var dw = t('dow');
+    var label = order.length === 7 ? t('everyDay') : run ? t('range')(dw[order[0]], dw[order[order.length - 1]]) : t('every') + order.map(function (d) { return dw[d]; }).join(', ');
+    var u = String(r.until || '');
+    return /^\d{4}-\d{2}-\d{2}$/.test(u) ? label + t('until') + Number(u.slice(8)) + ' ' + t('mon')[Number(u.slice(5, 7)) - 1] : label;
+  }
+  function applyLang() {
+    TAGS = L[LANG].tags;
+    document.documentElement.lang = LANG;
+    document.querySelectorAll('[data-lang]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === LANG)); });
+    document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = t(el.getAttribute('data-i18n')); });
+    document.querySelectorAll('[data-i18n-html]').forEach(function (el) { el.innerHTML = t(el.getAttribute('data-i18n-html')); });
+    document.querySelectorAll('[data-i18n-ph]').forEach(function (el) { el.placeholder = t(el.getAttribute('data-i18n-ph')); el.setAttribute('aria-label', t(el.getAttribute('data-i18n-label'))); });
+    document.getElementById('examples').innerHTML = t('ex').map(function (x) { return '<button type="button" data-ex="' + x[0] + '">' + x[1] + '</button>'; }).join('');
+    document.getElementById('area').innerHTML = '<option value="">' + t('island') + '</option>' + AREAS.map(function (a) { return '<option value="' + a + '">' + areaName(a) + '</option>'; }).join('');
+    document.getElementById('understood').textContent = '';
+  }
+
   var IG = [
     { id: 'cova', name: 'Cova Verde', area: 'West coast', kind: 'Beach bar', day: 0, start: 1080, end: 1350, tags: ['sunset', 'live'], src: 'ig', what: 'Sunset with a live sax player on the rocks.', caption: '“Tonight from 18:00, sax at sunset on the rocks. Come early for a spot 🌅”', read: 'Read from their post 3 hours ago', confidence: 'sunset, live music' },
     { id: 'pescador', name: 'Pescador 22', area: 'Santa Eulària', kind: 'Restaurant', day: 0, start: 1200, end: 1410, tags: ['food', 'live'], src: 'ig', what: 'Seafood dinner with Spanish guitar on the terrace.', caption: '“Saturday guitar night is back. Fish of the day, Toni on guitar from 20:30.”', read: 'Read from their post 6 hours ago', confidence: 'food, live music' },
@@ -276,7 +360,7 @@ header { padding: 18px 0 6px; }
       var v = [];
       f.venues.forEach(function (ven) {
         ven.listings.forEach(function (l) {
-          v.push({ id: l.id, name: ven.name, area: ven.area, kind: ven.kind, day: l.date === f.today ? 0 : 1, start: l.start, end: l.end, tags: l.tags, type: typeOf(l, l.kind), price: l.price || '', runs: l.runs || '', src: ven.listed ? 'l' : 'v',
+          v.push({ id: l.id, name: ven.name, area: ven.area, kind: ven.kind, day: l.date === f.today ? 0 : 1, start: l.start, end: l.end, tags: l.tags, type: typeOf(l, l.kind), price: l.price || '', runs: l.repeat ? '' : (l.runs || ''), repeat: l.repeat || null, src: ven.listed ? 'l' : 'v',
             what: l.title + (l.what ? '. ' + l.what : ''), lineup: l.lineup, food: l.food, offer: l.offer, action: l.action, updated: 'live' });
         });
       });
@@ -317,20 +401,20 @@ header { padding: 18px 0 6px; }
   }
 
   function whenLabel(x) {
-    if (x.day === 0 && x.start <= S.clock && x.end > S.clock) return '<span class="live">On now</span><b>until ' + hhmm(x.end) + '</b>';
-    return (x.day === 1 ? 'Tomorrow' : 'From') + '<b>' + hhmm(x.start) + '</b>';
+    if (x.day === 0 && x.start <= S.clock && x.end > S.clock) return '<span class="live">' + t('onNow') + '</span><b>' + t('liveUntil') + ' ' + hhmm(x.end) + '</b>';
+    return (x.day === 1 ? t('tomorrow') : t('from')) + '<b>' + hhmm(x.start) + '</b>';
   }
 
   function card(x) {
     var saved = !!S.saved[x.id];
     return '<article class="card" data-open="' + x.id + '" tabindex="0" role="button" aria-label="' + esc(x.name + ', ' + x.what) + '">' +
-      '<div class="top"><div><p class="vname">' + esc(x.name) + '</p><div class="where">' + esc(x.kind) + ' · ' + esc(x.area) + '</div></div>' +
+      '<div class="top"><div><p class="vname">' + esc(x.name) + '</p><div class="where">' + esc(kindName(x.kind)) + ' · ' + esc(areaName(x.area)) + '</div></div>' +
       '<div class="when">' + whenLabel(x) + '</div></div>' +
       '<p class="what">' + esc(x.what) + '</p>' +
-      (x.price || x.runs ? '<p class="extra">' + (x.price ? '<b>' + esc(x.price) + '</b>' : '') + (x.price && x.runs ? ' · ' : '') + esc(x.runs || '') + '</p>' : '') +
+      (function () { var rt = repeatText(x.repeat) || x.runs || ''; return x.price || rt ? '<p class="extra">' + (x.price ? '<b>' + esc(x.price) + '</b>' : '') + (x.price && rt ? ' · ' : '') + esc(rt) + '</p>' : ''; })() +
       '<div class="tags">' + x.tags.map(function (t) { return '<span class="tag' + (S.tags.indexOf(t) >= 0 ? ' hit' : '') + '">' + TAGS[t] + '</span>'; }).join('') + '</div>' +
-      '<div class="src">' + (x.src === 'v' ? '<span class="badge v">VERIFIED</span>Live from ' + esc(x.name) + '’s own site' : x.src === 'l' ? '<span class="badge l">LISTED</span>Sent in by ' + esc(x.name) : '<span class="badge ig">FROM INSTAGRAM</span>' + esc(x.read)) +
-      '<span style="flex:1"></span><button type="button" class="save" data-save="' + x.id + '" aria-pressed="' + saved + '" aria-label="' + (saved ? 'Remove from saved' : 'Save') + '">' + (saved ? '♥' : '♡') + '</button></div>' +
+      '<div class="src">' + (x.src === 'v' ? '<span class="badge v">VERIFIED</span>' + esc(t('fromVenue')(x.name)) : x.src === 'l' ? '<span class="badge l">LISTED</span>' + esc(t('sentBy')(x.name)) : '<span class="badge ig">FROM INSTAGRAM</span>' + esc(x.read)) +
+      '<span style="flex:1"></span><button type="button" class="save" data-save="' + x.id + '" aria-pressed="' + saved + '" aria-label="' + (saved ? t('unsave') : t('save')) + '">' + (saved ? '♥' : '♡') + '</button></div>' +
       '</article>';
   }
 
@@ -341,51 +425,52 @@ header { padding: 18px 0 6px; }
     $('#chips').innerHTML = Object.keys(TAGS).map(function (k) { return '<button type="button" class="chip" data-tag="' + k + '" aria-pressed="' + (S.tags.indexOf(k) >= 0) + '">' + TAGS[k] + '</button>'; }).join('');
     $('#area').value = S.area;
     var list = D.filter(matches).sort(sortList);
-    var title = { now: 'On right now', tonight: 'Tonight', tomorrow: 'Tomorrow' }[S.when];
-    var names = S.tags.map(function (t) { return t === 'dj' ? 'DJ' : TAGS[t].toLowerCase(); });
-    if (names.length) title += ': ' + (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names.at(-1) : names[0]);
-    if (S.area) title += ' in ' + S.area;
-    if (S.type !== 'all') title += S.type === 'food' ? ' · food' : ' · nights';
+    var title = { now: t('onNow'), tonight: t('tonight'), tomorrow: t('tomorrow') }[S.when];
+    var names = S.tags.map(function (k) { return k === 'dj' ? 'DJ' : TAGS[k].toLowerCase(); });
+    if (names.length) title += ': ' + (names.length > 1 ? names.slice(0, -1).join(', ') + t('and') + names.at(-1) : names[0]);
+    if (S.area) title += t('in') + areaName(S.area);
+    if (S.type !== 'all') title += ' · ' + t('typeTitle')[S.type];
     $('#resultTitle').textContent = title;
     var v = list.filter(function (x) { return x.src === 'v'; }).length;
-    $('#resultCount').textContent = list.length + (list.length === 1 ? ' place' : ' places') + (v ? ' · ' + v + ' verified' : '');
+    $('#resultCount').textContent = list.length + ' ' + (list.length === 1 ? t('place') : t('places')) + (v ? ' · ' + v + ' ' + t('verified') : '');
     if (list.length) { $('#list').innerHTML = list.map(card).join(''); }
     else {
       // Suggest the filter that would bring results back.
-      var fixes = S.tags.map(function (t) {
-        var rest = S.tags.filter(function (o) { return o !== t; });
+      var fixes = S.tags.map(function (tg) {
+        var rest = S.tags.filter(function (o) { return o !== tg; });
         var n = D.filter(function (x) { return inWindow(x) && (!S.area || x.area === S.area) && (S.type === 'all' || x.type === S.type || x.type === 'both') && rest.every(function (o) { return x.tags.indexOf(o) >= 0; }); }).length;
-        return n ? '<button type="button" class="chip" data-drop="' + t + '">Without ' + TAGS[t].toLowerCase() + ' (' + n + ')</button>' : '';
+        return n ? '<button type="button" class="chip" data-drop="' + tg + '">' + t('without')(TAGS[tg].toLowerCase()) + ' (' + n + ')</button>' : '';
       }).join('');
       var areaN = S.area ? D.filter(function (x) { return inWindow(x) && (S.type === 'all' || x.type === S.type || x.type === 'both') && S.tags.every(function (o) { return x.tags.indexOf(o) >= 0; }); }).length : 0;
-      $('#list').innerHTML = '<div class="empty"><p><b>Nothing matches that yet.</b></p><p class="note">Try one of these:</p>' + fixes + (areaN ? '<button type="button" class="chip" data-drop-area>Whole island (' + areaN + ')</button>' : '') + (S.when === 'now' ? '<button type="button" class="chip" data-when="tonight">Later tonight</button>' : '') + (S.type !== 'all' ? '<button type="button" class="chip" data-type="all">Todo (' + D.filter(function (x) { return inWindow(x) && (!S.area || x.area === S.area) && S.tags.every(function (o) { return x.tags.indexOf(o) >= 0; }); }).length + ')</button>' : '') + (S.tags.length || S.area ? '<button type="button" class="chip" data-clear>Clear filters (' + D.filter(inWindow).length + ')</button>' : '') + '</div>';
+      $('#list').innerHTML = '<div class="empty"><p><b>' + t('none') + '</b></p><p class="note">' + t('tryThese') + '</p>' + fixes + (areaN ? '<button type="button" class="chip" data-drop-area>' + t('island') + ' (' + areaN + ')</button>' : '') + (S.when === 'now' ? '<button type="button" class="chip" data-when="tonight">' + t('later') + '</button>' : '') + (S.type !== 'all' ? '<button type="button" class="chip" data-type="all">Todo (' + D.filter(function (x) { return inWindow(x) && (!S.area || x.area === S.area) && S.tags.every(function (o) { return x.tags.indexOf(o) >= 0; }); }).length + ')</button>' : '') + (S.tags.length || S.area ? '<button type="button" class="chip" data-clear>' + t('clear') + ' (' + D.filter(inWindow).length + ')</button>' : '') + '</div>';
     }
     var saved = D.filter(function (x) { return S.saved[x.id]; });
-    $('#savedCount').textContent = saved.length ? saved.length + ' saved' : '';
-    $('#savedList').innerHTML = saved.length ? saved.map(card).join('') : '<div class="empty"><p><b>Nothing saved yet.</b></p><p class="note">Tap the heart on a place to keep it here for tonight.</p></div>';
+    $('#savedCount').textContent = saved.length ? t('savedN')(saved.length) : '';
+    $('#savedList').innerHTML = saved.length ? saved.map(card).join('') : '<div class="empty"><p><b>' + t('noSaved') + '</b></p><p class="note">' + t('noSavedNote') + '</p></div>';
     document.querySelectorAll('[data-view]').forEach(function (b) { b.setAttribute('aria-current', b.getAttribute('data-view') === S.view ? 'page' : 'false'); });
     ['tonight', 'saved', 'venues'].forEach(function (k) { $('#view-' + k).hidden = k !== S.view; });
   }
 
   // Free-text ask: picks out what, where and when.
+  // Each entry: words (English and Spanish) separated by |, what they set, and the value.
   var WORDS = [
-    [/\b(food|eat|eating|dinner|lunch|brunch|tapas|hungry|paella|grill)\b/, 'tag', 'food'],
-    [/\b(dj|djs|decks|house|techno|disco|dance)\b/, 'tag', 'dj'],
-    [/\bsunset\b/, 'tag', 'sunset'],
-    [/\b(live|band|guitar|sax|acoustic|jazz)\b/, 'tag', 'live'],
-    [/\b(late|after midnight|till late|open late)\b/, 'tag', 'late'],
-    [/\b(family|kids|children|child)\b/, 'tag', 'family'],
-    [/\b(sant antoni|san antonio|san an)\b/, 'area', 'Sant Antoni'],
-    [/\b(ibiza town|eivissa|old town|town)\b/, 'area', 'Ibiza Town'],
-    [/\b(santa eul[aà]ria|santa eulalia)\b/, 'area', 'Santa Eulària'],
-    [/\b(west|west coast|sant josep|cala)\b/, 'area', 'West coast'],
-    [/\b(north|sant joan|portinatx|san juan)\b/, 'area', 'North'],
-    [/\b(now|right now)\b/, 'when', 'now'],
-    [/\btonight\b/, 'when', 'tonight'],
-    [/\btomorrow\b/, 'when', 'tomorrow']
-  ];
+    ['food|eat|eating|dinner|lunch|brunch|tapas|hungry|paella|grill|comida|comer|cena|cenar|almuerzo|almorzar|menú|menu|hambre|tapear|brasa', 'tag', 'food'],
+    ['dj|djs|decks|house|techno|disco|dance|pinchadiscos|bailar|sesión', 'tag', 'dj'],
+    ['sunset|atardecer|puesta de sol', 'tag', 'sunset'],
+    ['live|band|guitar|sax|acoustic|jazz|directo|en vivo|banda|guitarra|acústico|concierto', 'tag', 'live'],
+    ['late|after midnight|till late|open late|tarde|hasta tarde|madrugada', 'tag', 'late'],
+    ['family|kids|children|child|familia|niños|niñas|crios|críos', 'tag', 'family'],
+    ['sant antoni|san antonio|san an', 'area', 'Sant Antoni'],
+    ['ibiza town|eivissa|old town|town|ciudad|dalt vila|ibiza ciudad', 'area', 'Ibiza Town'],
+    ['santa eulària|santa eularia|santa eulalia', 'area', 'Santa Eulària'],
+    ['west|west coast|sant josep|san josé|san jose|cala|costa oeste|oeste', 'area', 'West coast'],
+    ['north|sant joan|portinatx|san juan|norte', 'area', 'North'],
+    ['now|right now|ahora|ya|ahora mismo', 'when', 'now'],
+    ['tonight|esta noche|hoy', 'when', 'tonight'],
+    ['tomorrow|mañana', 'when', 'tomorrow']
+  ].map(function (w) { return [new RegExp(' (' + w[0] + ') '), w[1], w[2]]; });
   function ask(text) {
-    var q = ' ' + text.toLowerCase() + ' ';
+    var q = ' ' + text.toLowerCase().replace(/[^0-9a-záéíóúüñàèòç]+/g, ' ') + ' ';
     var tags = [], area = '', when = '';
     WORDS.forEach(function (w) {
       if (!w[0].test(q)) return;
@@ -393,36 +478,37 @@ header { padding: 18px 0 6px; }
       if (w[1] === 'area' && !area) area = w[2];
       if (w[1] === 'when' && !when) when = w[2];
     });
-    if (!tags.length && !area && !when) { $('#understood').textContent = 'Try words like food, DJ, sunset, live music, late, family, or an area.'; return; }
+    if (!tags.length && !area && !when) { $('#understood').textContent = t('tryWords'); return; }
     S.tags = tags; S.area = area; S.when = when || 'tonight';
-    var parts = tags.map(function (t) { return TAGS[t]; }).concat(area ? [area] : [], [({ now: 'Now', tonight: 'Tonight', tomorrow: 'Tomorrow' })[S.when]]);
-    $('#understood').textContent = 'Looking for: ' + parts.join(' · ');
+    var parts = tags.map(function (k) { return TAGS[k]; }).concat(area ? [areaName(area)] : [], [t(S.when)]);
+    $('#understood').textContent = t('looking') + parts.join(' · ');
     render();
   }
 
   function openSheet(id) {
     var x = D.find(function (y) { return y.id === id; });
     if (!x) return;
-    var rows = [['When', (x.day === 1 ? 'Tomorrow ' : 'Today ') + hhmm(x.start) + ' to ' + hhmm(x.end)], ['Where', x.kind + ' · ' + x.area]];
-    if (x.lineup) rows.push(['Line-up', x.lineup]);
-    if (x.food) rows.push(['Food', x.food]);
-    if (x.offer) rows.push(['Offer', x.offer]);
-    if (x.price) rows.push(['Price', x.price]);
-    if (x.runs) rows.push(['Runs', x.runs]);
+    var rows = [[t('when'), (x.day === 1 ? t('tomorrow') : t('today')) + ' ' + hhmm(x.start) + t('to') + hhmm(x.end)], [t('where'), kindName(x.kind) + ' · ' + areaName(x.area)]];
+    if (x.lineup) rows.push([t('lineup'), x.lineup]);
+    if (x.food) rows.push([t('foodRow'), x.food]);
+    if (x.offer) rows.push([t('offer'), x.offer]);
+    if (x.price) rows.push([t('price'), x.price]);
+    var rt = repeatText(x.repeat) || x.runs;
+    if (rt) rows.push([t('runs'), rt]);
     var listedBody = '<dl class="kv">' + rows.map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('') + '</dl>' +
-        '<div class="src"><span class="badge l">LISTED</span>Sent in by ' + esc(x.name) + ' and checked before it went up.</div>' +
-        '<div class="actions">' + (x.action ? '<a class="btn" href="' + esc(x.action.href) + '" rel="noopener" target="_blank">' + esc(x.action.label) + '</a>' : '') + '<a class="btn line" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(x.name + ' ' + x.area + ' Ibiza') + '">Directions</a></div>' +
-        '<p class="note">Times can change, so check with the venue before you go.</p>';
+        '<div class="src"><span class="badge l">LISTED</span>' + esc(t('listedNote')(x.name)) + '</div>' +
+        '<div class="actions">' + (x.action ? '<a class="btn" href="' + esc(x.action.href) + '" rel="noopener" target="_blank">' + esc(actionLabel(x.action.label)) + '</a>' : '') + '<a class="btn line" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(x.name + ' ' + x.area + ' Ibiza') + '">' + t('directions') + '</a></div>' +
+        '<p class="note">' + t('checkTimes') + '</p>';
     var body = x.src === 'l' ? listedBody : x.src === 'v'
       ? '<dl class="kv">' + rows.map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('') + '</dl>' +
-        '<div class="src"><span class="badge v">VERIFIED</span>Live from ' + esc(x.name) + '’s own site on the venue platform. When they change it, this changes.</div>' +
-        '<div class="actions"><a class="btn" href="' + x.action.href + '">' + esc(x.action.label) + '</a><a class="btn line" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(x.name + ' ' + x.area + ' Ibiza') + '">Directions</a></div>'
+        '<div class="src"><span class="badge v">VERIFIED</span>' + esc(t('verifiedNote')(x.name)) + '</div>' +
+        '<div class="actions"><a class="btn" href="' + esc(x.action.href) + '">' + esc(actionLabel(x.action.label)) + '</a><a class="btn line" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(x.name + ' ' + x.area + ' Ibiza') + '">' + t('directions') + '</a></div>'
       : '<dl class="kv">' + rows.map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('') + '</dl>' +
         '<div class="caption">' + esc(x.caption) + '<small>' + esc(x.read) + '. Picked out: ' + esc(x.confidence) + '.</small></div>' +
         '<div class="actions"><span class="btn line" aria-disabled="true">Open their Instagram</span></div>' +
         '<p class="note">Read automatically from a public post, so check with the venue. Times and line-ups can change.</p>';
     $('#sheetHost').innerHTML = '<div class="scrim" data-close-bg><div class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(x.name) + '">' +
-      '<button type="button" class="close" data-close aria-label="Close">✕</button>' +
+      '<button type="button" class="close" data-close aria-label="' + t('close') + '">✕</button>' +
       '<div><h3>' + esc(x.name) + '</h3><p class="what" style="margin-top:6px">' + esc(x.what) + '</p></div>' +
       '<div class="tags">' + x.tags.map(function (t) { return '<span class="tag">' + TAGS[t] + '</span>'; }).join('') + '</div>' + body + '</div></div>';
     $('.close').focus();
@@ -430,25 +516,26 @@ header { padding: 18px 0 6px; }
   function closeSheet() { $('#sheetHost').innerHTML = ''; }
 
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-type],[data-when],[data-tag],[data-drop],[data-drop-area],[data-clear],[data-ex],[data-save],[data-open],[data-close],[data-close-bg],[data-view]');
-    if (!t) return;
-    if (t.hasAttribute('data-close-bg')) { if (e.target === t) closeSheet(); return; }
-    if (t.hasAttribute('data-close')) return closeSheet();
-    if (t.hasAttribute('data-save')) {
-      var id = t.getAttribute('data-save');
+    var tEl = e.target.closest('[data-lang],[data-type],[data-when],[data-tag],[data-drop],[data-drop-area],[data-clear],[data-ex],[data-save],[data-open],[data-close],[data-close-bg],[data-view]');
+    if (!tEl) return;
+    if (tEl.hasAttribute('data-close-bg')) { if (e.target === tEl) closeSheet(); return; }
+    if (tEl.hasAttribute('data-close')) return closeSheet();
+    if (tEl.hasAttribute('data-save')) {
+      var id = tEl.getAttribute('data-save');
       if (S.saved[id]) delete S.saved[id]; else S.saved[id] = 1;
       try { localStorage.setItem('playbook-saved', JSON.stringify(S.saved)); } catch (err) {}
       return render();
     }
-    if (t.hasAttribute('data-open')) return openSheet(t.getAttribute('data-open'));
-    if (t.hasAttribute('data-type')) { S.type = t.getAttribute('data-type'); return render(); }
-    if (t.hasAttribute('data-when')) { S.when = t.getAttribute('data-when'); $('#understood').textContent = ''; return render(); }
-    if (t.hasAttribute('data-tag')) { var k = t.getAttribute('data-tag'), i = S.tags.indexOf(k); if (i >= 0) S.tags.splice(i, 1); else S.tags.push(k); $('#understood').textContent = ''; return render(); }
-    if (t.hasAttribute('data-drop')) { S.tags = S.tags.filter(function (o) { return o !== t.getAttribute('data-drop'); }); return render(); }
-    if (t.hasAttribute('data-drop-area')) { S.area = ''; return render(); }
-    if (t.hasAttribute('data-clear')) { S.tags = []; S.area = ''; S.type = 'all'; $('#understood').textContent = ''; $('#askInput').value = ''; return render(); }
-    if (t.hasAttribute('data-ex')) { $('#askInput').value = t.getAttribute('data-ex'); return ask(t.getAttribute('data-ex')); }
-    if (t.hasAttribute('data-view')) { S.view = t.getAttribute('data-view'); closeSheet(); window.scrollTo(0, 0); return render(); }
+    if (tEl.hasAttribute('data-open')) return openSheet(tEl.getAttribute('data-open'));
+    if (tEl.hasAttribute('data-lang')) { LANG = tEl.getAttribute('data-lang'); try { localStorage.setItem('playbook-lang', LANG); } catch (err) {} applyLang(); closeSheet(); return render(); }
+    if (tEl.hasAttribute('data-type')) { S.type = tEl.getAttribute('data-type'); return render(); }
+    if (tEl.hasAttribute('data-when')) { S.when = tEl.getAttribute('data-when'); $('#understood').textContent = ''; return render(); }
+    if (tEl.hasAttribute('data-tag')) { var k = tEl.getAttribute('data-tag'), i = S.tags.indexOf(k); if (i >= 0) S.tags.splice(i, 1); else S.tags.push(k); $('#understood').textContent = ''; return render(); }
+    if (tEl.hasAttribute('data-drop')) { S.tags = S.tags.filter(function (o) { return o !== tEl.getAttribute('data-drop'); }); return render(); }
+    if (tEl.hasAttribute('data-drop-area')) { S.area = ''; return render(); }
+    if (tEl.hasAttribute('data-clear')) { S.tags = []; S.area = ''; S.type = 'all'; $('#understood').textContent = ''; $('#askInput').value = ''; return render(); }
+    if (tEl.hasAttribute('data-ex')) { $('#askInput').value = tEl.getAttribute('data-ex'); return ask(tEl.getAttribute('data-ex')); }
+    if (tEl.hasAttribute('data-view')) { S.view = tEl.getAttribute('data-view'); closeSheet(); window.scrollTo(0, 0); return render(); }
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') closeSheet();
@@ -458,6 +545,7 @@ header { padding: 18px 0 6px; }
   $('#area').addEventListener('change', function (e) { S.area = e.target.value; render(); });
   $('#clock').addEventListener('input', function (e) { S.clock = Number(e.target.value); render(); });
   $('#nowBtn').addEventListener('click', function () { loadFeed(true); });
+  applyLang();
   if (GUEST) { $('#platformLink').href = 'https://foodforthought.agency'; holding(true); } else render();
   loadFeed(true);
   setInterval(function () { if (!document.hidden) loadFeed(false); }, 20000);
