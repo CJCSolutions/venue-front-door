@@ -583,12 +583,14 @@ function withTables(state, rows, today) {
   return rows.map((r) => {
     if (r.date < today || !R.HOLDS.includes(r.status)) return { ...r, table_label: r.table_ref ? TP.label(plan, r.table_ref) : null };
     const day = byDate[r.date];
-    const given = r.table_ref ? null : TP.occupancy(plan, day).placed.get(r.id);
+    const ok = TP.valid(plan, r.table_ref, r.guests);
+    const given = ok ? null : TP.occupancy(plan, day).placed.get(r.id);
     return {
       ...r,
-      table_label: r.table_ref ? TP.label(plan, r.table_ref) : given ? TP.label(plan, given.option.ref) + ' (suggested)' : 'No table yet',
-      table_todo: TP.action(plan, r.table_ref || (given && given.option.ref)),
-      table_missing: !r.table_ref,
+      table_ref: ok ? r.table_ref : null,
+      table_label: ok ? TP.label(plan, r.table_ref) : given ? TP.label(plan, given.option.ref) + ' (suggested)' : 'No table yet',
+      table_todo: TP.action(plan, ok ? r.table_ref : given && given.option.ref),
+      table_missing: !ok,
       moves: TP.movesFor(plan, day, r).map((ref) => ({ ref, label: TP.label(plan, ref) }))
     };
   });
@@ -600,10 +602,11 @@ async function placeWaiting(state) {
   if (!TP.planOn(settings)) return;
   const plan = TP.planOf(settings);
   const today = localNow(state.venue.timezone).date;
-  const waiting = (await store.listReservations(today)).filter((r) => !r.table_ref && R.HOLDS.includes(r.status));
+  // Bookings with no table, or whose table is no longer in the plan or is now too small.
+  const waiting = (await store.listReservations(today)).filter((r) => R.HOLDS.includes(r.status) && !TP.valid(plan, r.table_ref, r.guests));
   for (const r of waiting) {
     await store.setReservationTable(r.id, (rows, b) => {
-      if (b.table_ref) return null;
+      if (TP.valid(plan, b.table_ref, b.guests)) return null;
       const o = TP.place(plan, rows.filter((x) => x.id !== b.id), b.time, b.guests);
       return o ? o.ref : null;
     });
@@ -742,7 +745,7 @@ app.post('/api/admin/reservations', requireAdmin, express.json({ limit: '4kb' })
   if (!r.contact) r.contact = '-';
   const plan = TP.planOn(st) ? TP.planOf(st) : null;
   const result = await store.addReservation(r, plan ? planCheck(plan, r.time, r.guests, { force: Boolean(b.force) }) : b.force ? 100000 : st.covers);
-  if (result.full) return res.status(409).json({ error: plan ? `No table free for ${r.guests} at ${r.time}${result.left ? ` (the biggest free seats ${result.left})` : ''}.` : `Only ${result.left} ${result.left === 1 ? 'place' : 'places'} left at ${r.time}.`, full: true });
+  if (result.full) return res.status(409).json({ error: plan ? `No table free for ${r.guests} at ${r.time}${result.left ? ` (the biggest free table seats ${result.left})` : ''}.` : `Only ${result.left} ${result.left === 1 ? 'place' : 'places'} left at ${r.time}.`, full: true });
   res.json({ ok: true, id: result.id, table: plan ? TP.label(plan, result.table_ref) : null, todo: plan ? TP.action(plan, result.table_ref) : '' });
 }));
 

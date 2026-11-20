@@ -503,3 +503,19 @@ test('table plan: bookings go on tables, joins alert the manager, tables can be 
   assert.strictEqual(off.planOn, false);
   assert.strictEqual(off.tables.plan.tables.length, 3);
 });
+
+test('table plan: changing the plan moves bookings off tables that are gone', async () => {
+  const cookie = await session();
+  const tables = [{ name: '1', seats: 2 }, { name: '2', seats: 4 }, { name: '3', seats: 4 }];
+  await adminAction(cookie, 'tables.save', { times: '20:00', covers: 100, maxParty: 8, notice: 0, daysAhead: 60, mode: 'auto', plan: { on: true, hold: 120, tables, joins: '2+3' } });
+  const st0 = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
+  const date = require('../lib/time').addDays(st0.localToday, 50);
+  const r = await (await fetch(base + '/api/admin/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ date, time: '20:00', guests: 6, name: 'Gone join' }) })).json();
+  assert.strictEqual(r.table, 'Tables 2 + 3 joined');
+  // Table 3 is replaced by a table of 6 called 9: the booking moves there.
+  await adminAction(cookie, 'tables.save', { times: '20:00', covers: 100, maxParty: 8, notice: 0, daysAhead: 60, mode: 'auto', plan: { on: true, hold: 120, tables: [tables[0], tables[1], { name: '9', seats: 6 }], joins: '' } });
+  const st = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
+  const b = st.reservations.find((x) => x.name === 'Gone join');
+  assert.strictEqual(b.table_ref, '9');
+  assert.strictEqual(b.table_missing, false);
+});

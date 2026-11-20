@@ -76,3 +76,14 @@ test('the editor input is checked', () => {
   assert.throws(() => TP.clean({ on: true, tables: [] }, fail), /at least one/);
   assert.strictEqual(TP.clean({ hold: 999, tables: [{ name: 'A', seats: 2 }] }, fail).hold, 120);
 });
+
+test('a saved table that left the plan or got too small no longer counts', () => {
+  assert.strictEqual(TP.valid(plan, '3+4', 7), true);
+  assert.strictEqual(TP.valid(plan, '9', 2), false);
+  assert.strictEqual(TP.valid(plan, '3', 6), false);
+  // a party of 6 still saved on table 3 (now 4 seats) is given a real table instead
+  const rows = [row('20:00', 6, '3')];
+  const occ = TP.occupancy(plan, rows);
+  assert.strictEqual(occ.placed.get(rows[0].id).option.ref, '5');
+  assert.strictEqual(occ.placed.get(rows[0].id).given, true);
+});

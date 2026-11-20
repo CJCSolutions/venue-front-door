@@ -263,7 +263,7 @@
     var html = pill || r.table_todo ? '<div style="margin-top:4px">' + pill + (r.table_todo ? '<span class="pill warn">To do: ' + esc(r.table_todo) + '</span>' : '') + '</div>' : '';
     if (canMove) {
       html += '<select class="tblmove" data-res-table="' + r.id + '" aria-label="Move to another table">' +
-        (r.table_ref ? '' : '<option value="" selected>Put on a table…</option>') +
+        (r.table_missing ? '<option value="" selected>Put on a table…</option>' : '') +
         r.moves.map(function (m) { return '<option value="' + esc(m.ref) + '"' + (m.ref === r.table_ref ? ' selected' : '') + '>' + esc(m.ref === r.table_ref ? m.label + ' (now)' : 'Move to ' + m.label) + '</option>'; }).join('') + '</select>';
     }
     return html;
@@ -866,7 +866,7 @@
       '<p class="muted" style="margin:0 0 10px">Splits into: leave empty, or write how a table splits, like 4+2 for a table of 6.</p>' +
       '<button type="button" class="btn small" id="tbAdd" style="margin-bottom:14px">＋ Add a table</button>' +
       '<label class="f">Tables that can be joined<input name="joins" value="' + esc((pl.joins || []).map(function (x) { return x.join('+'); }).join(', ')) + '" placeholder="3+4, 6+7"></label>' +
-      '<p class="muted" style="margin:-4px 0 12px">Separate with commas. Joined tables seat their seats added together.</p></div>' +
+      '<p class="muted" style="margin:-4px 0 12px">Separate with commas. A join seats all its tables’ seats together.</p></div>' +
       '<div id="tbErr"></div><button class="btn dark block" type="submit">Save</button></form>');
     $('#tbAdd').addEventListener('click', function () {
       var n = $$('#tbList .dj', sheet).length + 1;
