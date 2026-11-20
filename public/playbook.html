@@ -248,7 +248,7 @@ header { padding: 18px 0 6px; }
       save: 'Guardar', unsave: 'Quitar de guardados', savedN: function (n) { return n + (n === 1 ? ' guardado' : ' guardados'); },
       none: 'Todavía no hay nada así.', tryThese: 'Prueba con:', without: function (x) { return 'Sin ' + x; }, later: 'Más tarde esta noche', clear: 'Quitar filtros',
       noSaved: 'Aún no has guardado nada.', noSavedNote: 'Toca el corazón de un sitio para tenerlo aquí esta noche.',
-      tryWords: 'Prueba con palabras como cena, DJ, atardecer, música en directo, tarde, familia o una zona.', looking: 'Buscando: ',
+      tryWords: 'Prueba con palabras como cena, DJ, atardecer, música en directo, hasta tarde, familia o una zona.', looking: 'Buscando: ',
       when: 'Cuándo', where: 'Dónde', lineup: 'Quién toca', foodRow: 'Comida', offer: 'Oferta', price: 'Precio', runs: 'Se repite',
       today: 'Hoy', to: ' a ', listedNote: function (n) { return 'Enviado por ' + n + ' y revisado antes de publicarlo.'; },
       verifiedNote: function (n) { return 'Al momento desde la web de ' + n + ' en la plataforma. Cuando lo cambian, cambia aquí.'; },
@@ -313,10 +313,10 @@ header { padding: 18px 0 6px; }
   function L10n(x) {
     if (x.src === 'ig' || x.title === undefined) return x;
     var what = x.rawWhat;
-    if (x.items) what = x.items.length ? t('serving')(x.items.join(', ').toLowerCase()) : t('isOn')(x.title);
-    var lineup = x.acts ? x.acts.map(function (a) { return a.name + (a.time ? t('actFrom') + a.time : ''); }).join(' · ') : x.lineup;
-    var food = x.menu ? x.menu.name + ' ' + x.menu.from + t('to') + x.menu.to : x.food;
-    var offer = x.cutoff ? t('preBy')(x.cutoff.time, x.cutoff.date === x.today ? '' : shortDate(x.cutoff.date)) : x.offer;
+    if (Array.isArray(x.items)) what = x.items.length ? t('serving')(x.items.join(', ').toLowerCase()) : t('isOn')(x.title);
+    var lineup = Array.isArray(x.acts) ? x.acts.map(function (a) { return a.name + (a.time ? t('actFrom') + a.time : ''); }).join(' · ') : x.lineup;
+    var food = x.menu && x.menu.name ? x.menu.name + ' ' + x.menu.from + t('to') + x.menu.to : x.food;
+    var offer = x.cutoff && x.cutoff.time ? t('preBy')(x.cutoff.time, x.cutoff.date === x.today ? '' : shortDate(x.cutoff.date)) : x.offer;
     return Object.assign({}, x, { what: x.title + (what ? '. ' + what : ''), lineup: lineup, food: food, offer: offer });
   }
   // "Mon to Fri until 18 Dec" / "lun a vie hasta el 18 dic", from the days (0 = Sunday) and the last date.
