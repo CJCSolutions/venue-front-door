@@ -16,6 +16,7 @@ const { buildFeed, guideFeed, isGuestHost } = require('./lib/playbook');
 const listed = require('./lib/listed');
 const pitch = require('./lib/pitch');
 const R = require('./lib/reservations');
+const TP = require('./lib/tableplan');
 const notify = require('./lib/notify');
 const LEADS_PASSWORD = process.env.LEADS_PASSWORD || '';
 
@@ -185,8 +186,20 @@ async function tableCtx(state, wanted) {
   const settings = R.tableSettings(state);
   const dates = R.bookableDates(state);
   const date = dates.includes(wanted) ? wanted : dates[0] || null;
-  const times = date ? R.timesFor(state, date, await store.reservationsTaken(date)) : [];
-  return { settings, dates, date, times };
+  const plan = TP.planOn(settings) ? TP.planOf(settings) : null;
+  const times = !date ? [] : plan ? R.timesForPlan(state, date, await store.reservationsOn(date)) : R.timesFor(state, date, await store.reservationsTaken(date));
+  return { settings, dates, date, times, plan };
+}
+
+// Table plan: a check for the store, run inside its lock with the day's bookings.
+// Gives the booking the best free table, or says the time is full.
+function planCheck(plan, time, guests, { force = false } = {}) {
+  return (rows) => {
+    const o = TP.place(plan, rows, time, guests);
+    if (o) return { table_ref: o.ref };
+    if (force) return { table_ref: null };
+    return { full: true, left: TP.biggestFree(plan, rows, time) };
+  };
 }
 
 app.get('/book', page(async (req, res) => {
@@ -215,11 +228,20 @@ app.post('/book/table', express.urlencoded({ extended: false, limit: '20kb' }), 
   if (!(tv.guests >= 1 && tv.guests <= table.settings.maxParty)) return again(400, `Bookings are for 1 to ${table.settings.maxParty} guests. For a bigger group, send a request below.`);
   if (!tv.name || !tv.contact) return again(400, 'Please add your name and a phone number or email.');
   const status = table.settings.mode === 'manual' ? 'pending' : 'confirmed';
-  const result = await store.addReservation({ date: tv.date, time: tv.time, guests: tv.guests, name: tv.name, contact: tv.contact, note: tv.note, status, source: tv.src || (ctx.member ? 'circle' : 'direct') }, table.settings.covers);
-  if (result.full) return again(409, result.left ? `Only ${result.left} ${result.left > 1 ? 'places' : 'place'} left at ${tv.time}. Try fewer guests or another time.` : `${tv.time} just filled up. Pick another time.`, await tableCtx(ctx.state, tv.date));
+  const plan = table.plan;
+  const result = await store.addReservation({ date: tv.date, time: tv.time, guests: tv.guests, name: tv.name, contact: tv.contact, note: tv.note, status, source: tv.src || (ctx.member ? 'circle' : 'direct') }, plan ? planCheck(plan, tv.time, tv.guests) : table.settings.covers);
+  if (result.full) {
+    const msg = plan
+      ? (result.left ? `At ${tv.time} we can seat up to ${result.left}. Try fewer guests or another time.` : `${tv.time} just filled up. Pick another time.`)
+      : (result.left ? `Only ${result.left} ${result.left > 1 ? 'places' : 'place'} left at ${tv.time}. Try fewer guests or another time.` : `${tv.time} just filled up. Pick another time.`);
+    return again(409, msg, await tableCtx(ctx.state, tv.date));
+  }
   const when = `${formatDate(tv.date)} at ${tv.time}`;
-  notify.venueAlert(ctx.state, status === 'pending' ? `Booking to confirm: ${tv.guests} at ${tv.time}` : `New booking: ${tv.guests} at ${tv.time}`,
-    [`${tv.name}, ${tv.guests} ${tv.guests > 1 ? 'guests' : 'guest'}, ${when}.`, `Contact: ${tv.contact}`, tv.note && `Note: ${tv.note}`, status === 'pending' ? 'Confirm or decline it in the editor.' : 'Confirmed automatically.'],
+  // Table plan: when only a join or a split fits, the subject says what to do.
+  const todo = plan && TP.action(plan, result.table_ref);
+  const subject = todo ? `Party of ${tv.guests} at ${tv.time}: ${todo}${status === 'pending' ? ' (to confirm)' : ''}` : status === 'pending' ? `Booking to confirm: ${tv.guests} at ${tv.time}` : `New booking: ${tv.guests} at ${tv.time}`;
+  notify.venueAlert(ctx.state, subject,
+    [`${tv.name}, ${tv.guests} ${tv.guests > 1 ? 'guests' : 'guest'}, ${when}.`, plan && `${TP.label(plan, result.table_ref)}.${todo ? ` Please ${todo} before ${tv.time}.` : ''}`, `Contact: ${tv.contact}`, tv.note && `Note: ${tv.note}`, status === 'pending' ? 'Confirm or decline it in the editor.' : 'Confirmed automatically.'],
     { replyTo: tv.contact, base: baseUrl(req) });
   if (status === 'confirmed') notify.guestEmail(ctx.state, tv.contact, 'your table is booked', ['Hello,', '', `Your table for ${tv.guests} is booked for ${when}.`, 'Need to change it? Just reply to this email.']);
   res.send(render.bookPage(ctx, { table: await tableCtx(ctx.state, tv.date), tableSent: { status, ...tv } }));
@@ -550,12 +572,50 @@ app.post('/api/logout', (req, res) => { res.set('Set-Cookie', 'vfd_session=; Htt
 
 app.get('/api/editor-info', (req, res) => res.json({ demo: DEMO, demoPassword: DEMO ? ADMIN_PASSWORD : null, loggedIn: isEditor(req) }));
 
+// Table plan: each booking from today on gets its table in words, what the
+// manager must do (join or split), and the free tables it could move to.
+function withTables(state, rows, today) {
+  const settings = R.tableSettings(state);
+  if (!TP.planOn(settings)) return rows;
+  const plan = TP.planOf(settings);
+  const byDate = {};
+  for (const r of rows) (byDate[r.date] = byDate[r.date] || []).push(r);
+  return rows.map((r) => {
+    if (r.date < today || !R.HOLDS.includes(r.status)) return { ...r, table_label: r.table_ref ? TP.label(plan, r.table_ref) : null };
+    const day = byDate[r.date];
+    const given = r.table_ref ? null : TP.occupancy(plan, day).placed.get(r.id);
+    return {
+      ...r,
+      table_label: r.table_ref ? TP.label(plan, r.table_ref) : given ? TP.label(plan, given.option.ref) + ' (suggested)' : 'No table yet',
+      table_todo: TP.action(plan, r.table_ref || (given && given.option.ref)),
+      table_missing: !r.table_ref,
+      moves: TP.movesFor(plan, day, r).map((ref) => ({ ref, label: TP.label(plan, ref) }))
+    };
+  });
+}
+
+// When the table plan is switched on, bookings already taken get a table, oldest first.
+async function placeWaiting(state) {
+  const settings = R.tableSettings(state);
+  if (!TP.planOn(settings)) return;
+  const plan = TP.planOf(settings);
+  const today = localNow(state.venue.timezone).date;
+  const waiting = (await store.listReservations(today)).filter((r) => !r.table_ref && R.HOLDS.includes(r.status));
+  for (const r of waiting) {
+    await store.setReservationTable(r.id, (rows, b) => {
+      if (b.table_ref) return null;
+      const o = TP.place(plan, rows.filter((x) => x.id !== b.id), b.time, b.guests);
+      return o ? o.ref : null;
+    });
+  }
+}
+
 app.get('/api/admin/state', requireAdmin, page(async (req, res) => {
   let [{ data, version }, changes, enquiries, bookings, members, orders] = await Promise.all([
     store.getState(), store.listChanges(10), store.listEnquiries(100), store.listBookings(500), store.listMembers(1000), store.listOrders(300)
   ]);
   const localToday = localNow(data.venue.timezone).date;
-  const reservations = await store.listReservations(addDays(localToday, -1));
+  const reservations = withTables(data, await store.listReservations(addDays(localToday, -1)), localToday);
   const schedule = buildSchedule(data, new Date(), { editor: true });
   const poIds = (data.preorders || []).map((x) => x.id).concat('collect');
   orders = orders.filter((o) => poIds.includes(o.preorder_id));
@@ -564,7 +624,7 @@ app.get('/api/admin/state', requireAdmin, page(async (req, res) => {
   res.json({
     state: data, version, schedule, status: openStatus(data), menus: menusNow(data), labels: labels(data),
     changes, enquiries, bookings, members, counts, orders, prep: prepList(orders.filter((o) => o.preorder_id !== 'collect'), schedule.today), preorders: preordersNow(data),
-    reservations, localToday, tables: R.tableSettings(data), tablesOn: R.tablesOn(data), collect: R.collectSettings(data), alerts: { to: notify.alertAddress(data), mailbox: notify.configured() },
+    reservations, localToday, tables: R.tableSettings(data), tablesOn: R.tablesOn(data), planOn: TP.planOn(R.tableSettings(data)), holdChoices: TP.HOLD_CHOICES, collect: R.collectSettings(data), alerts: { to: notify.alertAddress(data), mailbox: notify.configured() },
     stats: buildStats({ state: data, schedule, bookings, members, views, enquiries, orders }),
     baseUrl: baseUrl(req), demo: DEMO, offers: offersNow(data),
     catalog: { modules: MODULES, sections: SECTIONS, presets: PRESETS }
@@ -584,6 +644,7 @@ app.post('/api/admin/action', requireAdmin, express.json({ limit: '64kb' }), pag
       throw e;
     }
     const saved = await store.saveState(result.state, current.version, result.change);
+    if (saved && action.type === 'tables.save') await placeWaiting(result.state);
     if (saved) return res.json({ ok: true, version: saved, change: result.change });
   }
   res.status(409).json({ error: 'Busy, please try again' });
@@ -633,8 +694,17 @@ app.patch('/api/admin/reservations/:id', requireAdmin, express.json({ limit: '4k
   if (!r) return res.status(404).json({ error: 'Booking not found' });
   const { data } = await store.getState();
   // Confirming a declined or cancelled booking takes a place again: the store checks there is one.
-  const done = await store.setReservationStatus(r.id, status, R.HOLDS.includes(status) && !R.HOLDS.includes(r.status) ? R.tableSettings(data).covers : null);
-  if (done && done.full) return res.status(409).json({ error: `${r.time} is full now. Cancel another booking first, or ask the guest to pick another time.` });
+  const st = R.tableSettings(data);
+  const plan = TP.planOn(st) ? TP.planOf(st) : null;
+  const takesPlace = R.HOLDS.includes(status) && !R.HOLDS.includes(r.status);
+  // With a table plan, a booking that takes a place again keeps its table if it is still free, or gets the best free one.
+  const check = !takesPlace ? null : plan ? (rows, b) => {
+    if (b.table_ref && TP.canTake(plan, rows, b, b.table_ref)) return { table_ref: b.table_ref };
+    const o = TP.place(plan, rows, b.time, b.guests);
+    return o ? { table_ref: o.ref } : { full: true };
+  } : st.covers;
+  const done = await store.setReservationStatus(r.id, status, check);
+  if (done && done.full) return res.status(409).json({ error: plan ? `No table is free for ${r.guests} at ${r.time} now. Move or cancel another booking first, or ask the guest to pick another time.` : `${r.time} is full now. Cancel another booking first, or ask the guest to pick another time.` });
   const when = `${formatDate(r.date)} at ${r.time}`;
   const v = data.venue.name;
   const words = {
@@ -643,7 +713,20 @@ app.patch('/api/admin/reservations/:id', requireAdmin, express.json({ limit: '4k
     cancelled: ['your booking is cancelled', `your booking for ${r.guests} at ${v} on ${when} is cancelled.`]
   }[status];
   if (words && r.status !== status) notify.guestEmail(data, r.contact, words[0], [`Hello, ${words[1]}`]);
-  res.json({ ok: true, whatsapp: words ? R.whatsappLink(r.contact, `Hi ${r.name}, ${words[1]}`) : null, emailed: Boolean(words && R.looksLikeEmail(r.contact) && notify.configured() && !DEMO) });
+  res.json({ ok: true, whatsapp: words ? R.whatsappLink(r.contact, `Hi ${r.name}, ${words[1]}`) : null, emailed: Boolean(words && R.looksLikeEmail(r.contact) && notify.configured() && !DEMO), todo: plan && done && done.table_ref ? TP.action(plan, done.table_ref) : '' });
+}));
+
+// Table plan: move a booking to another free table.
+app.patch('/api/admin/reservations/:id/table', requireAdmin, express.json({ limit: '4kb' }), page(async (req, res) => {
+  const ref = String((req.body || {}).table || '').slice(0, 40);
+  const { data } = await store.getState();
+  const st = R.tableSettings(data);
+  if (!TP.planOn(st)) return res.status(400).json({ error: 'The table plan is off' });
+  const plan = TP.planOf(st);
+  const done = await store.setReservationTable(Number(req.params.id), (rows, b) => (R.HOLDS.includes(b.status) && TP.canTake(plan, rows, b, ref) ? ref : null));
+  if (done.missing) return res.status(404).json({ error: 'Booking not found' });
+  if (done.taken) return res.status(409).json({ error: `${TP.label(plan, ref)} is not free for that booking. Pick another.` });
+  res.json({ ok: true, label: TP.label(plan, ref), todo: TP.action(plan, ref) });
 }));
 
 // A booking taken by phone or at the door, so it counts against the covers.
@@ -657,9 +740,10 @@ app.post('/api/admin/reservations', requireAdmin, express.json({ limit: '4kb' })
   if (!(r.guests >= 1 && r.guests <= 500)) return res.status(400).json({ error: 'Guests must be between 1 and 500' });
   if (!r.name) return res.status(400).json({ error: 'Add the guest name' });
   if (!r.contact) r.contact = '-';
-  const result = await store.addReservation(r, b.force ? 100000 : st.covers);
-  if (result.full) return res.status(409).json({ error: `Only ${result.left} ${result.left === 1 ? 'place' : 'places'} left at ${r.time}.`, full: true });
-  res.json({ ok: true, id: result.id });
+  const plan = TP.planOn(st) ? TP.planOf(st) : null;
+  const result = await store.addReservation(r, plan ? planCheck(plan, r.time, r.guests, { force: Boolean(b.force) }) : b.force ? 100000 : st.covers);
+  if (result.full) return res.status(409).json({ error: plan ? `No table free for ${r.guests} at ${r.time}${result.left ? ` (the biggest free seats ${result.left})` : ''}.` : `Only ${result.left} ${result.left === 1 ? 'place' : 'places'} left at ${r.time}.`, full: true });
+  res.json({ ok: true, id: result.id, table: plan ? TP.label(plan, result.table_ref) : null, todo: plan ? TP.action(plan, result.table_ref) : '' });
 }));
 
 app.patch('/api/admin/orders/:id', requireAdmin, express.json({ limit: '4kb' }), page(async (req, res) => {

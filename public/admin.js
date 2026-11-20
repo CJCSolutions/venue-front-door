@@ -250,16 +250,36 @@
     return '<div class="row" style="align-items:flex-start"><div class="grow"><b>' + esc(r.time) + ' · ' + esc(r.name) + ' · ' + esc(r.guests) + '</b>' + (r.status === 'pending' ? ' <span class="pill ' + pill + '">to confirm</span>' : '') +
       (withDate ? '<div class="muted">' + esc(shortDate(r.date)) + '</div>' : '') +
       '<div class="muted">' + contactLinks(r.contact) + (wa ? ' · <a href="' + esc(wa) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') + ' · ' + esc(r.source || 'direct') + '</div>' +
-      (r.note ? '<div class="muted">“' + esc(r.note) + '”</div>' : '') +
+      (r.note ? '<div class="muted">“' + esc(r.note) + '”</div>' : '') + tableLine(r) +
       (r.status === 'pending' ? '<div class="btnrow"><button class="btn small dark" data-res="' + r.id + '" data-status="confirmed">Confirm</button><button class="btn small" data-res="' + r.id + '" data-status="declined">Decline</button></div>' : '') + '</div>' +
       (r.status !== 'pending' ? '<select data-res-sel="' + r.id + '" aria-label="Booking status">' + ['confirmed', 'arrived', 'no-show', 'cancelled', 'declined'].map(function (s) { return '<option ' + (r.status === s ? 'selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '') + '</div>';
+  }
+  // Table plan: the booking's table, the job to do (join or split), and a move list.
+  function tableLine(r) {
+    if (!S.data.planOn || !r.table_label) return '';
+    var html = '<div style="margin-top:4px"><span class="pill ' + (r.table_missing && !/suggested/.test(r.table_label) ? 'bad' : 'plain') + '">' + esc(r.table_label) + '</span>' +
+      (r.table_todo ? ' <span class="pill warn">To do: ' + esc(r.table_todo) + '</span>' : '') + '</div>';
+    if (r.moves && r.moves.length && ['pending', 'confirmed', 'arrived'].indexOf(r.status) >= 0) {
+      html += '<select class="tblmove" data-res-table="' + r.id + '" aria-label="Move to another table">' +
+        (r.table_ref ? '' : '<option value="" selected>Put on a table…</option>') +
+        r.moves.map(function (m) { return '<option value="' + esc(m.ref) + '"' + (m.ref === r.table_ref ? ' selected' : '') + '>' + esc(m.ref === r.table_ref ? m.label + ' (now)' : 'Move to ' + m.label) + '</option>'; }).join('') + '</select>';
+    }
+    return html;
+  }
+  function setTable(id, ref) {
+    if (!ref) return;
+    return api('/api/admin/reservations/' + id + '/table', { method: 'PATCH', body: { table: ref } }).then(function (j) {
+      toast('Moved to ' + j.label + (j.todo ? ' · ' + j.todo : ''));
+      return load();
+    }).catch(function (err) { fail(err); load(); });
   }
   function tablesInbox() {
     var j = S.data, t = j.tables;
     var list = j.reservations.filter(function (r) { return r.date >= j.localToday; });
-    var head = '<p class="muted">' + t.times.length + ' booking times, ' + t.covers + ' guests each, up to ' + t.maxParty + ' per table. ' + (t.mode === 'auto' ? 'Confirmed automatically while there is space.' : 'You confirm each booking.') + ' <a href="#" data-content="tables">Change</a></p>' +
+    var pl = t.plan || {};
+    var head = '<p class="muted">' + t.times.length + ' booking times, ' + (j.planOn ? 'table plan with ' + pl.tables.length + ' tables, each held ' + holdWords(pl.hold) + ', up to ' + t.maxParty + ' per booking. ' : t.covers + ' guests each, up to ' + t.maxParty + ' per table. ') + (t.mode === 'auto' ? 'Confirmed automatically while there is space.' : 'You confirm each booking.') + ' <a href="#" data-content="tables">Change</a></p>' +
       '<button class="btn small dark" data-content="addres" style="margin-bottom:12px">＋ Add a phone booking</button>';
-    if (!list.length) return head + '<div class="card">No table bookings coming up. Share your booking link: <b>' + esc(j.baseUrl) + '/book</b></div>';
+    if (!list.length) return head + '<div class="card">No table bookings coming up. Share your booking link: <b class="url">' + esc(j.baseUrl) + '/book</b></div>';
     var by = {};
     list.forEach(function (r) { (by[r.date] = by[r.date] || []).push(r); });
     return head + Object.keys(by).sort().map(function (date) {
@@ -814,24 +834,50 @@
       return load().then(function () {
         if (j.whatsapp && !j.emailed && (status === 'confirmed' || status === 'declined')) {
           openSheet(head('Booking ' + status) + '<p>Let the guest know. Their message is written for you.</p><a class="btn dark block" href="' + esc(j.whatsapp) + '" target="_blank" rel="noopener" data-close>Send on WhatsApp ↗</a>');
-        } else toast('Booking ' + status + (j.emailed ? ' · guest emailed' : ''));
+        } else toast('Booking ' + status + (j.emailed ? ' · guest emailed' : '') + (j.todo ? ' · ' + j.todo : ''));
       });
     }).catch(fail);
   }
 
+  function holdWords(m) { m = Number(m) || 120; var h = Math.floor(m / 60), r = m % 60; return (h ? h + (h > 1 ? ' hours' : ' hour') : '') + (r ? (h ? ' ' : '') + r + ' min' : ''); }
+  function tblRow(x) {
+    return '<div class="dj tbl"><input data-t-name value="' + esc(x.name) + '" maxlength="12" placeholder="Name" aria-label="Table name or number">' +
+      '<input data-t-seats type="number" min="1" max="30" value="' + esc(x.seats) + '" inputmode="numeric" aria-label="Seats">' +
+      '<input data-t-split value="' + esc(x.split ? x.split.join('+') : '') + '" placeholder="4+2" maxlength="5" aria-label="Splits into">' +
+      '<button type="button" aria-label="Remove table" onclick="this.parentNode.remove()">✕</button></div>';
+  }
   function tablesSheet() {
-    var t = S.data.tables, own = (S.data.state.links || {}).bookingUrl;
+    var t = S.data.tables, own = (S.data.state.links || {}).bookingUrl, pl = t.plan || {};
     openSheet(head('Table bookings') + (own ? '<div class="err">Your own booking system is set in Links, so guests book there. Remove that link to use these booking times.</div>' : '') +
       '<form id="tbForm"><label class="f">Booking times<input name="times" value="' + esc(t.times.join(' ')) + '" placeholder="13:00 13:30 14:00 20:00 20:30 21:00"></label>' +
       '<p class="muted" style="margin:-4px 0 12px">Separate with spaces. Only times inside your opening hours show to guests.</p>' +
-      '<div class="grid2"><label class="f">Guests per time<input type="number" name="covers" min="1" max="1000" value="' + esc(t.covers) + '"></label><label class="f">Biggest party<input type="number" name="maxParty" min="1" max="50" value="' + esc(t.maxParty) + '"></label></div>' +
+      '<div class="grid2"><label class="f" id="tbCovers"' + (pl.on ? ' hidden' : '') + '>Guests per time<input type="number" name="covers" min="1" max="1000" value="' + esc(t.covers) + '"></label><label class="f">Biggest party<input type="number" name="maxParty" min="1" max="50" value="' + esc(t.maxParty) + '"></label></div>' +
       '<div class="grid2"><label class="f">Notice (minutes)<input type="number" name="notice" min="0" max="2880" value="' + esc(t.notice) + '"></label><label class="f">Days ahead<input type="number" name="daysAhead" min="1" max="180" value="' + esc(t.daysAhead) + '"></label></div>' +
       '<label class="f">Confirming</label><div class="chips"><label class="daychip"><input type="radio" name="mode" value="auto" ' + (t.mode === 'auto' ? 'checked' : '') + '><span>Automatic while there is space</span></label><label class="daychip"><input type="radio" name="mode" value="manual" ' + (t.mode === 'manual' ? 'checked' : '') + '><span>I confirm each one</span></label></div>' +
+      '<h3>Table plan</h3>' +
+      '<label class="daychip" style="margin-bottom:10px"><input type="checkbox" name="planOn" ' + (pl.on ? 'checked' : '') + '><span>Put each booking on a table</span></label>' +
+      '<p class="muted" style="margin:0 0 12px">Guests can only book a time when a table fits them for the whole sitting. When only joined or split tables fit, you get an alert saying which.</p>' +
+      '<div id="tbPlan"' + (pl.on ? '' : ' hidden') + '>' +
+      '<label class="f">Each booking keeps its table for<select name="hold">' + S.data.holdChoices.map(function (m) { return '<option value="' + m + '"' + (Number(pl.hold || 120) === m ? ' selected' : '') + '>' + holdWords(m) + '</option>'; }).join('') + '</select></label>' +
+      '<div class="tblhead"><span>Table</span><span>Seats</span><span>Splits into</span><span></span></div>' +
+      '<div id="tbList">' + (pl.tables && pl.tables.length ? pl.tables : [{ name: '1', seats: 2 }, { name: '2', seats: 4 }]).map(tblRow).join('') + '</div>' +
+      '<button type="button" class="btn small" id="tbAdd" style="margin-bottom:14px">＋ Add a table</button>' +
+      '<label class="f">Tables that can be joined<input name="joins" value="' + esc((pl.joins || []).map(function (x) { return x.join('+'); }).join(', ')) + '" placeholder="3+4, 6+7"></label>' +
+      '<p class="muted" style="margin:-4px 0 12px">Splits into: leave empty, or write how a table splits, like 4+2 for a table of 6.</p></div>' +
       '<div id="tbErr"></div><button class="btn dark block" type="submit">Save</button></form>');
+    $('#tbAdd').addEventListener('click', function () {
+      var n = $$('#tbList .dj', sheet).length + 1;
+      $('#tbList').insertAdjacentHTML('beforeend', tblRow({ name: String(n), seats: 2 }));
+    });
+    $('[name=planOn]', sheet).addEventListener('change', function (e) { $('#tbPlan').hidden = !e.target.checked; $('#tbCovers').hidden = e.target.checked; });
     $('#tbForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var f = e.target;
-      act('tables.save', { times: f.times.value, covers: f.covers.value, maxParty: f.maxParty.value, notice: f.notice.value, daysAhead: f.daysAhead.value, mode: f.mode.value }).then(function (j) { closeSheet(); toast(j.change.summary); }).catch(function (err) { errBox('#tbErr', err); });
+      var plan = {
+        on: f.planOn.checked, hold: f.hold.value, joins: f.joins.value,
+        tables: $$('#tbList .dj', sheet).map(function (r) { return { name: $('[data-t-name]', r).value, seats: $('[data-t-seats]', r).value, split: $('[data-t-split]', r).value }; })
+      };
+      act('tables.save', { times: f.times.value, covers: f.covers.value, maxParty: f.maxParty.value, notice: f.notice.value, daysAhead: f.daysAhead.value, mode: f.mode.value, plan: plan }).then(function (j) { closeSheet(); toast(j.change.summary); }).catch(function (err) { errBox('#tbErr', err); });
     });
   }
 
@@ -842,16 +888,16 @@
       '<div class="grid2"><label class="f">Guests<input type="number" name="guests" min="1" max="500" value="2" required></label><label class="f">Name<input name="name" required maxlength="80"></label></div>' +
       '<label class="f">Phone or email<input name="contact" maxlength="120" inputmode="tel"></label>' +
       '<label class="f">Note<input name="note" maxlength="300" placeholder="Birthday, high chair"></label>' +
-      '<p class="muted">It counts against the guests per time, so the site never overbooks.</p><div id="arErr"></div><button class="btn dark block" type="submit">Add booking</button></form>');
+      '<p class="muted">' + (S.data.planOn ? 'It goes on the best free table, so the site never overbooks.' : 'It counts against the guests per time, so the site never overbooks.') + '</p><div id="arErr"></div><button class="btn dark block" type="submit">Add booking</button></form>');
     $('#arForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var f = e.target, body = { date: f.date.value, time: f.time.value, guests: f.guests.value, name: f.name.value, contact: f.contact.value, note: f.note.value };
       function send(force) {
         body.force = force;
-        return api('/api/admin/reservations', { method: 'POST', body: body }).then(function () { closeSheet(); toast('Booking added'); return load(); });
+        return api('/api/admin/reservations', { method: 'POST', body: body }).then(function (j) { closeSheet(); toast('Booking added' + (j.table ? ' · ' + j.table : '') + (j.todo ? ' · ' + j.todo : '')); return load(); });
       }
       send(false).catch(function (err) {
-        if (/left at/.test(err.message) && window.confirm(err.message + ' Add it anyway?')) return send(true).catch(function (e2) { errBox('#arErr', e2); });
+        if (/left at|No table free/.test(err.message) && window.confirm(err.message + ' Add it anyway' + (S.data.planOn ? ', with no table yet?' : '?'))) return send(true).catch(function (e2) { errBox('#arErr', e2); });
         errBox('#arErr', err);
       });
     });
@@ -1074,6 +1120,8 @@
   });
 
   document.addEventListener('change', function (e) {
+    var rt = e.target.closest('[data-res-table]');
+    if (rt) return setTable(rt.getAttribute('data-res-table'), rt.value);
     var rs = e.target.closest('[data-res-sel]');
     if (rs) return setRes(rs.getAttribute('data-res-sel'), rs.value);
     var ord = e.target.closest('[data-order]');

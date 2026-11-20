@@ -349,7 +349,7 @@ const post = (url, data) => fetch(base + url, { method: 'POST', headers: { 'Cont
 test('a guest books a table and it is confirmed straight away', async () => {
   const cookie = await session();
   await adminAction(cookie, 'links.save', { bookingUrl: '', bookingName: '' });
-  assert.strictEqual((await adminAction(cookie, 'tables.save', { times: '13:00 13:30 20:00 20:30', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto' })).status, 200);
+  assert.strictEqual((await adminAction(cookie, 'tables.save', { times: '13:00 13:30 20:00 20:30', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto', plan: { on: false } })).status, 200);
   const page = await (await fetch(base + '/book')).text();
   assert.match(page, /Book the table/);
   const date = /<option value="(\d{4}-\d{2}-\d{2})" selected>/.exec(page)[1];
@@ -370,7 +370,7 @@ test('a guest books a table and it is confirmed straight away', async () => {
 
 test('with manual confirming, the venue confirms and the guest gets a WhatsApp message ready', async () => {
   const cookie = await session();
-  await adminAction(cookie, 'tables.save', { times: '13:00 13:30 20:00 20:30', covers: 10, maxParty: 8, notice: 0, daysAhead: 30, mode: 'manual' });
+  await adminAction(cookie, 'tables.save', { times: '13:00 13:30 20:00 20:30', covers: 10, maxParty: 8, notice: 0, daysAhead: 30, mode: 'manual', plan: { on: false } });
   const page = await (await fetch(base + '/book')).text();
   assert.match(page, /Request this table/);
   const dates = [...page.matchAll(/<option value="(\d{4}-\d{2}-\d{2})"/g)].map((m) => m[1]);
@@ -415,7 +415,7 @@ test('a guest orders ahead to collect and it lands in the orders inbox', async (
 
 test('settings reject bad input', async () => {
   const cookie = await session();
-  assert.strictEqual((await adminAction(cookie, 'tables.save', { times: '25:00', covers: 4, maxParty: 4, notice: 0, daysAhead: 30 })).status, 400);
+  assert.strictEqual((await adminAction(cookie, 'tables.save', { times: '25:00', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, plan: { on: false } })).status, 400);
   assert.strictEqual((await adminAction(cookie, 'alerts.save', { email: 'not-an-email' })).status, 400);
   assert.strictEqual((await adminAction(cookie, 'alerts.save', { email: 'kitchen@marea.example' })).status, 200);
 });
@@ -432,10 +432,10 @@ test('table bookings stay off until the venue saves its own times', () => {
 
 test('booking times after midnight are refused, phone bookings count against covers', async () => {
   const cookie = await session();
-  const late = await adminAction(cookie, 'tables.save', { times: '22:00 00:30', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto' });
+  const late = await adminAction(cookie, 'tables.save', { times: '22:00 00:30', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto', plan: { on: false } });
   assert.strictEqual(late.status, 400);
   assert.match(late.body.error, /after midnight/);
-  await adminAction(cookie, 'tables.save', { times: '13:00 20:00', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto' });
+  await adminAction(cookie, 'tables.save', { times: '13:00 20:00', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto', plan: { on: false } });
   const state = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
   const date = require('../lib/time').addDays(state.localToday, 20);
   const add = (guests, force) => fetch(base + '/api/admin/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ date, time: '20:00', guests, name: 'Phone guest', force }) });
@@ -444,4 +444,62 @@ test('booking times after midnight are refused, phone bookings count against cov
   assert.strictEqual((await add(2, true)).status, 200);
   const page = await (await fetch(base + '/book?date=' + date)).text();
   assert.match(page, /20:00 · full/);
+});
+
+test('table plan: bookings go on tables, joins alert the manager, tables can be moved', async () => {
+  const cookie = await session();
+  const plan = { on: true, hold: 120, tables: [{ name: '1', seats: 2 }, { name: '2', seats: 4 }, { name: '3', seats: 4 }], joins: '2+3' };
+  const saved = await adminAction(cookie, 'tables.save', { times: '20:00 21:00 22:30', covers: 100, maxParty: 8, notice: 0, daysAhead: 40, mode: 'auto', plan });
+  assert.strictEqual(saved.status, 200);
+  assert.match(saved.body.change.summary, /table plan on \(3 tables\)/);
+  const state = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
+  assert.strictEqual(state.planOn, true);
+  const date = require('../lib/time').addDays(state.localToday, 30);
+  const book = (time, guests, name) => fetch(base + '/book/table', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Forwarded-For': '10.9.0.' + guests + name.length }, body: new URLSearchParams({ date, time, guests: String(guests), name, contact: name.toLowerCase() + '@example.com' }).toString() });
+
+  assert.strictEqual((await book('20:00', 2, 'Alba')).status, 200);
+  notify.sent.length = 0;
+  assert.strictEqual((await book('20:00', 7, 'Big')).status, 200);
+  const alert = notify.sent.find((m) => m.to === 'alerts@example.com');
+  assert.match(alert.subject, /Party of 7 at 20:00: join tables 2 and 3/);
+  assert.match(alert.text, /Tables 2 \+ 3 joined/);
+
+  // Every table is held until 22:00, so 21:00 is full and 22:30 is free.
+  const full = await book('21:00', 2, 'Cara');
+  assert.strictEqual(full.status, 409);
+  const page = await (await fetch(base + '/book?date=' + date)).text();
+  assert.match(page, /21:00 · full/);
+  assert.strictEqual((await book('22:30', 4, 'Dan')).status, 200);
+
+  // The manager moves Dan, and can't move him onto a table that is taken.
+  const st = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
+  const dan = st.reservations.find((r) => r.name === 'Dan');
+  assert.strictEqual(dan.table_ref, '2');
+  assert.deepStrictEqual(dan.moves.map((m) => m.ref), ['2', '3', '2+3']);
+  const move = (r, table) => fetch(base + '/api/admin/reservations/' + r.id + '/table', { method: 'PATCH', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ table }) });
+  assert.strictEqual((await move(dan, '3')).status, 200);
+  const alba = st.reservations.find((r) => r.name === 'Alba');
+  assert.strictEqual(alba.table_label, 'Table 1');
+  assert.strictEqual((await move(alba, '2')).status, 409);
+
+  // Cancel Big and confirm again: it gets its join back.
+  const big = st.reservations.find((r) => r.name === 'Big');
+  const setStatus = (status) => fetch(base + '/api/admin/reservations/' + big.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ status }) });
+  assert.strictEqual((await setStatus('cancelled')).status, 200);
+  const back = await (await setStatus('confirmed')).json();
+  assert.strictEqual(back.todo, 'join tables 2 and 3');
+
+  // A phone booking with no table free is refused, then added by hand with no table yet.
+  const phone = (force) => fetch(base + '/api/admin/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ date, time: '20:30', guests: 2, name: 'Walk in', force }) });
+  const refused = await phone(false);
+  assert.strictEqual(refused.status, 409);
+  assert.match((await refused.json()).error, /No table free for 2 at 20:30/);
+  const forced = await (await phone(true)).json();
+  assert.strictEqual(forced.table, 'No table yet');
+
+  // Switching the plan off goes back to guests per time.
+  await adminAction(cookie, 'tables.save', { times: '20:00', covers: 4, maxParty: 4, notice: 0, daysAhead: 30, mode: 'auto', plan: { ...plan, on: false } });
+  const off = await (await fetch(base + '/api/admin/state', { headers: { cookie } })).json();
+  assert.strictEqual(off.planOn, false);
+  assert.strictEqual(off.tables.plan.tables.length, 3);
 });
