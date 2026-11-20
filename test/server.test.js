@@ -286,6 +286,42 @@ test('weekly Listed entries run on the same weekday for eight weeks', () => {
   assert.ok(runsOn({ weekly: false, date: '2026-11-21' }, '2026-11-21'));
 });
 
+test('Listed: a food offer on its own, a night on its own, or both', () => {
+  const { validate, typeOf, toVenues, repeatLabel } = require('../lib/listed');
+  const base = { venue: 'Can Prova', area: 'Sant Antoni', kind: 'Restaurant', date: '2026-11-23', start: '13:00', end: '16:00', contact: 'hola@prova.example' };
+  // a menú del día: food only, Monday to Friday, until a date, with a price; no music needed
+  const food = validate({ ...base, type: 'food', title: 'Menú del día', price: '15 €', days: ['1', '2', '3', '4', '5'], until: '2026-12-18' }, '2026-11-20');
+  assert.deepStrictEqual(food.errors, []);
+  assert.deepStrictEqual(food.values.tags, ['food']);
+  assert.strictEqual(repeatLabel(food.values), 'Mon to Fri until 18 Dec');
+  // a night with no food
+  const night = validate({ ...base, type: 'night', title: 'DJ', tags: ['dj'] }, '2026-11-20');
+  assert.deepStrictEqual(night.errors, []);
+  assert.strictEqual(typeOf(night.values), 'night');
+  assert.deepStrictEqual(validate({ ...base, type: 'night', title: 'DJ' }, '2026-11-20').errors, ['tags'], 'a night still says what guests get');
+  // end date before the first day, or no ticked day inside the run, is refused
+  assert.ok(validate({ ...base, type: 'food', title: 'Menú', days: ['1'], until: '2026-11-22' }, '2026-11-20').errors.includes('until'));
+  assert.ok(validate({ ...base, type: 'food', title: 'Menú', days: ['6'], until: '2026-11-24' }, '2026-11-20').errors.includes('until'));
+  assert.ok(validate({ ...base, type: 'food', title: 'Menú', days: ['1'], until: '2027-03-01' }, '2026-11-20').errors.includes('until'));
+  // entries sent before the type existed are read from their tags
+  assert.strictEqual(typeOf({ tags: ['food', 'dj'] }), 'both');
+  assert.strictEqual(typeOf({ tags: ['food'] }), 'food');
+  // in the guide: runs on weekdays only, carries type, price and how it repeats
+  const rows = [{ id: 7, status: 'live', data: food.values }];
+  assert.strictEqual(toVenues(rows, '2026-11-21').length, 0, 'not on Saturday or Sunday');
+  const l = toVenues(rows, '2026-11-23')[0].listings[0];
+  assert.strictEqual(l.type, 'food'); assert.strictEqual(l.price, '15 €'); assert.strictEqual(l.runs, 'Mon to Fri until 18 Dec');
+  assert.strictEqual(toVenues(rows, '2026-12-21').length, 0, 'gone after the end date');
+});
+
+test('Verified listings say whether they are food, a night or both', async () => {
+  const feed = await (await fetch(base + '/api/playbook.json')).json();
+  const all = feed.venues.flatMap((v) => v.listings);
+  assert.ok(all.length);
+  for (const l of all) assert.ok(['food', 'night', 'both'].includes(l.type), l.id);
+  for (const l of all.filter((x) => x.kind === 'menu' || x.kind === 'preorder')) assert.strictEqual(l.type, 'food');
+});
+
 let cached = null;
 async function session() { return cached || (cached = await login()); }
 async function adminAction(cookie, type, payload) {

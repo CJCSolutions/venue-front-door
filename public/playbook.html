@@ -61,6 +61,10 @@ header { padding: 18px 0 6px; }
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
 .seg button { border: 0; border-radius: 9px; background: none; height: 38px; font-weight: 600; font-size: 14px; color: var(--muted); }
 .seg button[aria-pressed=true] { background: var(--ink); color: var(--paper); }
+.seg.type { margin-bottom: 10px; }
+.seg.type button[aria-pressed=true] { background: var(--pink); }
+.extra { font-size: 13px; color: var(--muted); margin: -2px 0 8px; }
+.extra b { color: var(--ink); }
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0 4px; scrollbar-width: none; }
 .chip { flex: none; height: 38px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); font-size: 14px; font-weight: 500; }
 .chip[aria-pressed=true] { background: var(--pink); border-color: var(--pink); color: #fff; }
@@ -168,6 +172,11 @@ header { padding: 18px 0 6px; }
     </div>
     <p class="understood" id="understood" aria-live="polite"></p>
 
+    <div class="seg type" role="group" aria-label="Food, nights or everything">
+      <button type="button" data-type="food" aria-pressed="false" lang="es">Comida</button>
+      <button type="button" data-type="night" aria-pressed="false" lang="es">Noches</button>
+      <button type="button" data-type="all" aria-pressed="true" lang="es">Todo</button>
+    </div>
     <div class="seg" role="group" aria-label="When">
       <button type="button" data-when="now" aria-pressed="false">Now</button>
       <button type="button" data-when="tonight" aria-pressed="true">Tonight</button>
@@ -249,7 +258,15 @@ header { padding: 18px 0 6px; }
     if (!on) document.getElementById('guideHead').hidden = false;
     return on;
   }
-  var S = { when: 'tonight', tags: [], area: '', clock: 1260, view: 'tonight', saved: {}, today: null };
+  // Food, a night, or both. Feeds from older installs have no type, so read it from the kind of listing and its tags.
+  function typeOf(l, kind) {
+    if (l.type === 'food' || l.type === 'night' || l.type === 'both') return l.type;
+    if (kind === 'menu' || kind === 'preorder') return 'food';
+    var t = l.tags || [], food = t.indexOf('food') >= 0, music = t.indexOf('dj') >= 0 || t.indexOf('live') >= 0;
+    return food && music ? 'both' : food ? 'food' : 'night';
+  }
+  IG.forEach(function (x) { x.type = typeOf(x); });
+  var S = { when: 'tonight', type: 'all', tags: [], area: '', clock: 1260, view: 'tonight', saved: {}, today: null };
 
   // Verified listings, live from the venue platform.
   function loadFeed(first) {
@@ -259,7 +276,7 @@ header { padding: 18px 0 6px; }
       var v = [];
       f.venues.forEach(function (ven) {
         ven.listings.forEach(function (l) {
-          v.push({ id: l.id, name: ven.name, area: ven.area, kind: ven.kind, day: l.date === f.today ? 0 : 1, start: l.start, end: l.end, tags: l.tags, src: ven.listed ? 'l' : 'v',
+          v.push({ id: l.id, name: ven.name, area: ven.area, kind: ven.kind, day: l.date === f.today ? 0 : 1, start: l.start, end: l.end, tags: l.tags, type: typeOf(l, l.kind), price: l.price || '', runs: l.runs || '', src: ven.listed ? 'l' : 'v',
             what: l.title + (l.what ? '. ' + l.what : ''), lineup: l.lineup, food: l.food, offer: l.offer, action: l.action, updated: 'live' });
         });
       });
@@ -289,6 +306,7 @@ header { padding: 18px 0 6px; }
   function matches(x) {
     if (!inWindow(x)) return false;
     if (S.area && x.area !== S.area) return false;
+    if (S.type !== 'all' && x.type !== S.type && x.type !== 'both') return false;
     return S.tags.every(function (t) { return x.tags.indexOf(t) >= 0; });
   }
   function sortList(a, b) {
@@ -309,6 +327,7 @@ header { padding: 18px 0 6px; }
       '<div class="top"><div><p class="vname">' + esc(x.name) + '</p><div class="where">' + esc(x.kind) + ' · ' + esc(x.area) + '</div></div>' +
       '<div class="when">' + whenLabel(x) + '</div></div>' +
       '<p class="what">' + esc(x.what) + '</p>' +
+      (x.price || x.runs ? '<p class="extra">' + (x.price ? '<b>' + esc(x.price) + '</b>' : '') + (x.price && x.runs ? ' · ' : '') + esc(x.runs || '') + '</p>' : '') +
       '<div class="tags">' + x.tags.map(function (t) { return '<span class="tag' + (S.tags.indexOf(t) >= 0 ? ' hit' : '') + '">' + TAGS[t] + '</span>'; }).join('') + '</div>' +
       '<div class="src">' + (x.src === 'v' ? '<span class="badge v">VERIFIED</span>Live from ' + esc(x.name) + '’s own site' : x.src === 'l' ? '<span class="badge l">LISTED</span>Sent in by ' + esc(x.name) : '<span class="badge ig">FROM INSTAGRAM</span>' + esc(x.read)) +
       '<span style="flex:1"></span><button type="button" class="save" data-save="' + x.id + '" aria-pressed="' + saved + '" aria-label="' + (saved ? 'Remove from saved' : 'Save') + '">' + (saved ? '♥' : '♡') + '</button></div>' +
@@ -317,6 +336,7 @@ header { padding: 18px 0 6px; }
 
   function render() {
     $('#clockOut').textContent = hhmm(S.clock);
+    document.querySelectorAll('[data-type]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-type') === S.type)); });
     document.querySelectorAll('[data-when]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-when') === S.when)); });
     $('#chips').innerHTML = Object.keys(TAGS).map(function (k) { return '<button type="button" class="chip" data-tag="' + k + '" aria-pressed="' + (S.tags.indexOf(k) >= 0) + '">' + TAGS[k] + '</button>'; }).join('');
     $('#area').value = S.area;
@@ -325,6 +345,7 @@ header { padding: 18px 0 6px; }
     var names = S.tags.map(function (t) { return t === 'dj' ? 'DJ' : TAGS[t].toLowerCase(); });
     if (names.length) title += ': ' + (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names.at(-1) : names[0]);
     if (S.area) title += ' in ' + S.area;
+    if (S.type !== 'all') title += S.type === 'food' ? ' · food' : ' · nights';
     $('#resultTitle').textContent = title;
     var v = list.filter(function (x) { return x.src === 'v'; }).length;
     $('#resultCount').textContent = list.length + (list.length === 1 ? ' place' : ' places') + (v ? ' · ' + v + ' verified' : '');
@@ -333,11 +354,11 @@ header { padding: 18px 0 6px; }
       // Suggest the filter that would bring results back.
       var fixes = S.tags.map(function (t) {
         var rest = S.tags.filter(function (o) { return o !== t; });
-        var n = D.filter(function (x) { return inWindow(x) && (!S.area || x.area === S.area) && rest.every(function (o) { return x.tags.indexOf(o) >= 0; }); }).length;
+        var n = D.filter(function (x) { return inWindow(x) && (!S.area || x.area === S.area) && (S.type === 'all' || x.type === S.type || x.type === 'both') && rest.every(function (o) { return x.tags.indexOf(o) >= 0; }); }).length;
         return n ? '<button type="button" class="chip" data-drop="' + t + '">Without ' + TAGS[t].toLowerCase() + ' (' + n + ')</button>' : '';
       }).join('');
-      var areaN = S.area ? D.filter(function (x) { return inWindow(x) && S.tags.every(function (o) { return x.tags.indexOf(o) >= 0; }); }).length : 0;
-      $('#list').innerHTML = '<div class="empty"><p><b>Nothing matches that yet.</b></p><p class="note">Try one of these:</p>' + fixes + (areaN ? '<button type="button" class="chip" data-drop-area>Whole island (' + areaN + ')</button>' : '') + (S.when === 'now' ? '<button type="button" class="chip" data-when="tonight">Later tonight</button>' : '') + (S.tags.length || S.area ? '<button type="button" class="chip" data-clear>Clear filters (' + D.filter(inWindow).length + ')</button>' : '') + '</div>';
+      var areaN = S.area ? D.filter(function (x) { return inWindow(x) && (S.type === 'all' || x.type === S.type || x.type === 'both') && S.tags.every(function (o) { return x.tags.indexOf(o) >= 0; }); }).length : 0;
+      $('#list').innerHTML = '<div class="empty"><p><b>Nothing matches that yet.</b></p><p class="note">Try one of these:</p>' + fixes + (areaN ? '<button type="button" class="chip" data-drop-area>Whole island (' + areaN + ')</button>' : '') + (S.when === 'now' ? '<button type="button" class="chip" data-when="tonight">Later tonight</button>' : '') + (S.type !== 'all' ? '<button type="button" class="chip" data-type="all">Todo</button>' : '') + (S.tags.length || S.area ? '<button type="button" class="chip" data-clear>Clear filters (' + D.filter(inWindow).length + ')</button>' : '') + '</div>';
     }
     var saved = D.filter(function (x) { return S.saved[x.id]; });
     $('#savedCount').textContent = saved.length ? saved.length + ' saved' : '';
@@ -386,6 +407,8 @@ header { padding: 18px 0 6px; }
     if (x.lineup) rows.push(['Line-up', x.lineup]);
     if (x.food) rows.push(['Food', x.food]);
     if (x.offer) rows.push(['Offer', x.offer]);
+    if (x.price) rows.push(['Price', x.price]);
+    if (x.runs) rows.push(['Runs', x.runs]);
     var listedBody = '<dl class="kv">' + rows.map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('') + '</dl>' +
         '<div class="src"><span class="badge l">LISTED</span>Sent in by ' + esc(x.name) + ' and checked before it went up.</div>' +
         '<div class="actions">' + (x.action ? '<a class="btn" href="' + esc(x.action.href) + '" rel="noopener" target="_blank">' + esc(x.action.label) + '</a>' : '') + '<a class="btn line" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(x.name + ' ' + x.area + ' Ibiza') + '">Directions</a></div>' +
@@ -407,7 +430,7 @@ header { padding: 18px 0 6px; }
   function closeSheet() { $('#sheetHost').innerHTML = ''; }
 
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-when],[data-tag],[data-drop],[data-drop-area],[data-clear],[data-ex],[data-save],[data-open],[data-close],[data-close-bg],[data-view]');
+    var t = e.target.closest('[data-type],[data-when],[data-tag],[data-drop],[data-drop-area],[data-clear],[data-ex],[data-save],[data-open],[data-close],[data-close-bg],[data-view]');
     if (!t) return;
     if (t.hasAttribute('data-close-bg')) { if (e.target === t) closeSheet(); return; }
     if (t.hasAttribute('data-close')) return closeSheet();
@@ -418,11 +441,12 @@ header { padding: 18px 0 6px; }
       return render();
     }
     if (t.hasAttribute('data-open')) return openSheet(t.getAttribute('data-open'));
+    if (t.hasAttribute('data-type')) { S.type = t.getAttribute('data-type'); return render(); }
     if (t.hasAttribute('data-when')) { S.when = t.getAttribute('data-when'); $('#understood').textContent = ''; return render(); }
     if (t.hasAttribute('data-tag')) { var k = t.getAttribute('data-tag'), i = S.tags.indexOf(k); if (i >= 0) S.tags.splice(i, 1); else S.tags.push(k); $('#understood').textContent = ''; return render(); }
     if (t.hasAttribute('data-drop')) { S.tags = S.tags.filter(function (o) { return o !== t.getAttribute('data-drop'); }); return render(); }
     if (t.hasAttribute('data-drop-area')) { S.area = ''; return render(); }
-    if (t.hasAttribute('data-clear')) { S.tags = []; S.area = ''; $('#understood').textContent = ''; $('#askInput').value = ''; return render(); }
+    if (t.hasAttribute('data-clear')) { S.tags = []; S.area = ''; S.type = 'all'; $('#understood').textContent = ''; $('#askInput').value = ''; return render(); }
     if (t.hasAttribute('data-ex')) { $('#askInput').value = t.getAttribute('data-ex'); return ask(t.getAttribute('data-ex')); }
     if (t.hasAttribute('data-view')) { S.view = t.getAttribute('data-view'); closeSheet(); window.scrollTo(0, 0); return render(); }
   });
